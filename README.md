@@ -1,36 +1,63 @@
-# Arquitetura do Sistema - Kemi
+# Arquitetura do Sistema - Quimia Kemi
 
-O **quimia-agent** é um backend desenvolvido em **FastAPI** voltado para servir como o motor de inteligência artificial do assistente inteligente **Kemi** em uma aplicação móvel. O sistema utiliza uma arquitetura orquestrada de **múltiplos agentes**, **guardrails de segurança em duas etapas** e **integração com banco de dados PostgreSQL** via ferramentas (*tools*).
+O **quimia-agent** é um backend desenvolvido em **FastAPI** voltado para servir como o motor de inteligência artificial do assistente inteligente **Kemi** em uma aplicação móvel. O sistema utiliza uma arquitetura orquestrada de **múltiplos agentes**, **guardrails de segurança em duas etapas** e persistência híbrida (**PostgreSQL** para dados estruturados/catálogo e **MongoDB** para histórico de sessões/mensagens).
 
 ---
 
-## 📁 Estrutura de Diretórios
+## 📁 Estrutura de Diretórios e Mapeamento de Arquivos `.py`
 
-A estrutura do projeto foi organizada de forma modular para garantir a separação clara de responsabilidades, facilitando a escalabilidade, manutenção e testes automatizados.
+A estrutura do projeto foi organizada de forma modular para garantir a separação clara de responsabilidades (S.O.L.I.D.), facilitando a escalabilidade, manutenção e testes automatizados.
 
 ```text
 quimia-agent/
-├── app/
-│   ├── agent/                      # Core da orquestração de Inteligência Artificial
-│   │   ├── guardrails/             # Camadas de segurança e validação
-│   │   │   ├── input_guardrail.py  # Filtro de entrada (ofensas, fora de escopo)
-│   │   │   └── output_guardrail.py # Filtro de saída (ética, erros de escrita, segurança)
-│   │   ├── specialists/            # Agentes especialistas do domínio
-│   │   │   ├── químico.py          # Dúvidas químicas, rótulos e compatibilidade
-│   │   │   ├── gps.py              # Descarte correto de produtos e localização
-│   │   │   └── bau.py              # Catálogo pessoal e histórico de interações
-│   │   └── tools/                  # Ferramentas específicas executáveis pelos agentes
-│   │       ├── postgres_tool.py    # Consulta e atualização no PostgreSQL
-│   │       └── location_tool.py    # Cruzamento de CEP/Bairro/Cidade
-│   ├── core/                       # Configurações globais, segurança (JWT) e variáveis (.env)
-│   ├── database/                   # Configuração de conexão ORM/Asyncpg com o Postgres
-│   ├── routes/                     # Endpoints da API FastAPI (REST & SSE/WebSockets)
-│   ├── schemas/                    # Schemas Pydantic para validação de dados
-│   ├── services/                   # Serviços de integração e regras de negócio acessórias
-│   └── main.py                     # Ponto de entrada da aplicação FastAPI
-├── .env                            # Variáveis de ambiente locais
-├── .env.example                    # Modelo de variáveis de ambiente
-├── .gitignore                      # Arquivos ignorados pelo Git
-├── LICENSE                         # Licença do projeto
-├── README.md                       # Documentação principal
-└── requirements.txt                # Dependências Python do projeto
+└── app/
+    ├── __init__.py
+    ├── main.py                     # Inicialização do FastAPI, CORS, middlewares, Lifespan e rotas
+    │
+    ├── agent/                      # Core de Inteligência Artificial e Orquestração
+    │   ├── __init__.py
+    │   ├── prompts.py              # Central de System Prompts de todos os agentes e guardrails
+    │   ├── orchestrator.py         # Agente Orquestrador (classificador de intenção e roteador)
+    │   ├── synthesizer.py          # Agente Sintetizador (consolida respostas no tom de voz da Kemi)
+    │   ├── workflow.py             # Montagem do Grafo (LangGraph) conectando todo o fluxo de execução
+    │   │
+    │   ├── guardrails/             # Barreiras de Segurança e Validação
+    │   │   ├── __init__.py
+    │   │   ├── input_guardrail.py  # Filtra ofensas, linguagem inadequada e temas fora de escopo
+    │   │   └── output_guardrail.py # Valida ética, formatação e segurança da resposta final
+    │   │
+    │   ├── specialists/            # Agentes Especialistas de Domínio
+    │   │   ├── __init__.py
+    │   │   ├── quimico_agent.py    # Dúvidas sobre química, rótulos e compatibilidades
+    │   │   ├── gps_agent.py        # Orientação de descarte correto e pontos de coleta (CEP/Bairro)
+    │   │   └── bau_agent.py        # Consulta ao catálogo pessoal do usuário e interações
+    │   │
+    │   └── tools/                  # Ferramentas Executáveis pelos Agentes
+    │       ├── __init__.py
+    │       ├── postgres_tool.py    # Tool de busca no catálogo/produtos no PostgreSQL
+    │       └── location_tool.py    # Tool de cruzamento e validação de CEP, Bairro e Cidade
+    │
+    ├── core/                       # Configurações Globais e Segurança
+    │   ├── __init__.py
+    │   ├── config.py               # Gestão de variáveis de ambiente (.env) via Pydantic
+    │   └── security.py             # Autenticação, validação de tokens JWT e chaves de API
+    │
+    ├── database/                   # Camada de Persistência Híbrida
+    │   ├── __init__.py
+    │   ├── postgres.py             # Engine, AsyncSession e conexão com PostgreSQL
+    │   ├── mongo.py                # Cliente Motor/Beanie e conexão com MongoDB
+    │   ├── models_pg.py            # Modelos relacionais (Catálogo de Produtos, Ecopontos/GPS)
+    │   └── models_mongo.py         # Mapeamento de documentos (Histórico de Chat e Sessões)
+    │
+    ├── routes/                     # Endpoints da API FastAPI
+    │   ├── __init__.py
+    │   ├── chat_routes.py          # Endpoint POST /chat (recebe requisição do app e dispara o workflow)
+    │   └── health_routes.py        # Endpoint GET /health (monitoramento do status dos serviços)
+    │
+    ├── schemas/                    # Validação de Payloads de Entrada/Saída (Pydantic)
+    │   ├── __init__.py
+    │   └── schemas.py              # Definição dos Schemas (ChatRequest e ChatResponse)
+    │
+    └── services/                   # Serviços Auxiliares de Negócio
+        ├── __init__.py
+        └── chat_service.py         # Camada intermediária de serviços do chat (integração DB/Workflow)
