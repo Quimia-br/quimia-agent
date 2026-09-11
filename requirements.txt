@@ -1,0 +1,19 @@
+# Web Framework & Servidor
+fastapi
+uvicorn[standard]
+
+# Banco de Dados
+psycopg2-binary
+pymongo
+
+# Frameworks de IA & Agentes
+langchain
+langgraph
+langchain-google-genai
+langchain-groq
+google-generativeai
+groq
+
+# Validação e Configuração
+pydantic
+python-dotenv
