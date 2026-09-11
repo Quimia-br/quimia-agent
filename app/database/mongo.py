@@ -1,0 +1,14 @@
+from pymongo import MongoClient
+from app.core.config import MONGODB_URI
+
+
+mongo: MongoClient | None = None
+
+def get_db():
+    """Obtém o banco somente quando uma operação realmente precisa dele."""
+    global mongo
+    if not MONGODB_URI:
+        raise RuntimeError("MONGODB_URI não está configurada. Consulte GET /health.")
+    if mongo is None:
+        mongo = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5_000)
+    return mongo["assessor"]
