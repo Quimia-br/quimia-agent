@@ -11,4 +11,4 @@ def get_db():
         raise RuntimeError("MONGODB_URI não está configurada. Consulte GET /health.")
     if mongo is None:
         mongo = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5_000)
-    return mongo["assessor"]
+    return mongo["quimia"]
