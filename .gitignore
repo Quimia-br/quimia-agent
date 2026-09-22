@@ -1,1 +1,15 @@
+# Ambiente e segredos
 .env
+
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.python-version.local
+
+# Testes, cobertura e análise estática
+.pytest_cache/
+.coverage
+

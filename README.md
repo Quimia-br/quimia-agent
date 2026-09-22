@@ -6,7 +6,6 @@ O **quimia-agent** é um backend desenvolvido em **FastAPI** voltado para servir
 
 ## 📁 Estrutura de Diretórios e Mapeamento de Arquivos `.py`
 
-A estrutura do projeto foi organizada de forma modular para garantir a separação clara de responsabilidades (S.O.L.I.D.), facilitando a escalabilidade, manutenção e testes automatizados.
 
 ```text
 quimia-agent/
@@ -61,3 +60,28 @@ quimia-agent/
     └── services/                   # Serviços Auxiliares de Negócio
         ├── __init__.py
         └── chat_service.py         # Camada intermediária de serviços do chat (integração DB/Workflow)
+```
+
+## Ambiente local
+
+O projeto usa Python 3.12. As dependências de produção ficam em
+`requirements.txt`; ferramentas de desenvolvimento e testes ficam em
+`requirements-dev.txt`.
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+cp .env.example .env
+uvicorn app.main:app --reload
+```
+
+Configure `CORS_ORIGINS` com uma lista de origens web separadas por vírgula.
+Como a API aceita credenciais, o curinga `*` não é permitido.
+
+## Verificações
+
+- `GET /` confirma que a API iniciou.
+- `GET /health/` executa `SELECT 1` no PostgreSQL e `ping` no MongoDB.
+- `pytest -q` executa os testes automatizados.
+- O workflow `.github/workflows/ci.yml` executa os testes em pushes e pull requests.
