@@ -1,48 +1,55 @@
-# app/main.py
+import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.core.config import validar_config
+
+from app.core.config import CORS_ORIGINS, validar_config
+from app.database.mongo import close_mongo
 from app.routes.health_routes import router as health_router
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Valida se todas as variáveis obrigatórias (.env) 
     erros = validar_config()
     if erros:
         mensagem = "\n".join(erros)
         raise RuntimeError(f"Erro ao iniciar a aplicação:\n{mensagem}")
-    
-    print(" Configurações validadas com sucesso!")
-    
-    yield
-    
-    print(" Encerrando aplicação...")
+
+    logger.info("Configurações validadas com sucesso.")
+
+    try:
+        yield
+    finally:
+        close_mongo()
+        logger.info("Recursos da aplicação encerrados.")
 
 
-app = FastAPI(
-    title="Quimia Agent API",
-    description="Backend do assistente Kemi com múltiplos agentes e guardrails.",
-    version="1.0.0",
-    lifespan=lifespan
-)
+def create_app() -> FastAPI:
+    application = FastAPI(
+        title="Quimia Agent API",
+        description="Backend do assistente Kemi com múltiplos agentes e guardrails.",
+        version="1.0.0",
+        lifespan=lifespan,
+    )
 
-# Configuração de CORS para liberar conexões da aplicação móvel
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], 
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(CORS_ORIGINS),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-# Registro das rotas ativas
-app.include_router(health_router)
+    application.include_router(health_router)
+
+    @application.get("/")
+    async def root():
+        return {"message": "Quimia Agent API está online."}
+
+    return application
 
 
-@app.get("/")
-async def root():
-    return {
-        "message": "Quimia Agent API está online."
-                }
+app = create_app()
