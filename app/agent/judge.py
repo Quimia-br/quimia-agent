@@ -2,76 +2,75 @@ import json
 from typing import Any
 
 from app.agent.base import StructuredAgent
-from app.agent.contracts import (
-    OrchestratorResult,
-    SpecialistResult,
-    SynthesisResult,
-)
+from app.agent.contracts import Evidence, JudgeResult, SpecialistResult, SynthesisResult
 from app.agent.llms import ModelProfile, create_chat_model
-from app.agent.prompts import SINTETIZADOR_PROMPT_COMPLETO
+from app.agent.prompts import JUIZ_PROMPT_COMPLETO
 
 
-class SynthesizerAgent:
-    """Consolida as respostas dos especialistas para o usuário final."""
+class JudgeAgent:
+    """Avalia sustentação factual, segurança e adequação da resposta final."""
 
     def __init__(self, model: Any | None = None) -> None:
         self._agent = StructuredAgent(
-            system_prompt=SINTETIZADOR_PROMPT_COMPLETO,
+            system_prompt=JUIZ_PROMPT_COMPLETO,
             human_template=(
                 "PERGUNTA_ORIGINAL:\n{pergunta_original}\n\n"
-                "PLANO_ORQUESTRADOR:\n{plano_orquestrador}\n\n"
+                "RESPOSTA_CANDIDATA:\n{resposta_candidata}\n\n"
                 "RESPOSTAS_ESPECIALISTAS:\n{respostas_especialistas}\n\n"
-                "FEEDBACK_GUARDRAIL:\n{feedback_guardrail}"
+                "EVIDENCIAS:\n{evidencias}"
             ),
-            output_schema=SynthesisResult,
-            model=model or create_chat_model(ModelProfile.FAST),
+            output_schema=JudgeResult,
+            model=model or create_chat_model(ModelProfile.SPECIALIST),
         )
 
     @staticmethod
     def _payload(
         pergunta_original: str,
-        plano_orquestrador: OrchestratorResult,
+        resposta_candidata: SynthesisResult,
         respostas_especialistas: list[SpecialistResult],
-        feedback_guardrail: str,
+        evidencias: list[Evidence],
     ) -> dict[str, str]:
         return {
             "pergunta_original": pergunta_original,
-            "plano_orquestrador": plano_orquestrador.model_dump_json(),
+            "resposta_candidata": resposta_candidata.model_dump_json(),
             "respostas_especialistas": json.dumps(
                 [response.model_dump() for response in respostas_especialistas],
                 ensure_ascii=False,
             ),
-            "feedback_guardrail": feedback_guardrail,
+            "evidencias": json.dumps(
+                [evidence.model_dump() for evidence in evidencias],
+                ensure_ascii=False,
+            ),
         }
 
     def invoke(
         self,
         pergunta_original: str,
-        plano_orquestrador: OrchestratorResult,
+        resposta_candidata: SynthesisResult,
         respostas_especialistas: list[SpecialistResult],
-        feedback_guardrail: str = "Não fornecido.",
-    ) -> SynthesisResult:
+        evidencias: list[Evidence] | None = None,
+    ) -> JudgeResult:
         return self._agent.invoke(
             self._payload(
                 pergunta_original,
-                plano_orquestrador,
+                resposta_candidata,
                 respostas_especialistas,
-                feedback_guardrail,
+                evidencias or [],
             )
         )
 
     async def ainvoke(
         self,
         pergunta_original: str,
-        plano_orquestrador: OrchestratorResult,
+        resposta_candidata: SynthesisResult,
         respostas_especialistas: list[SpecialistResult],
-        feedback_guardrail: str = "Não fornecido.",
-    ) -> SynthesisResult:
+        evidencias: list[Evidence] | None = None,
+    ) -> JudgeResult:
         return await self._agent.ainvoke(
             self._payload(
                 pergunta_original,
-                plano_orquestrador,
+                resposta_candidata,
                 respostas_especialistas,
-                feedback_guardrail,
+                evidencias or [],
             )
         )
