@@ -15,10 +15,14 @@ quimia-agent/
     │
     ├── agent/                      # Core de Inteligência Artificial e Orquestração
     │   ├── __init__.py
+    │   ├── base.py                 # Base LangChain para agentes com saída estruturada
+    │   ├── contracts.py            # Contratos Pydantic entre os agentes
+    │   ├── llms.py                 # Seleção dos modelos Groq por perfil
     │   ├── prompts.py              # Central de System Prompts de todos os agentes e guardrails
     │   ├── orchestrator.py         # Agente Orquestrador (classificador de intenção e roteador)
     │   ├── synthesizer.py          # Agente Sintetizador (consolida respostas no tom de voz da Kemi)
-    │   ├── workflow.py             # Montagem do Grafo (LangGraph) conectando todo o fluxo de execução
+    │   ├── judge.py                # Agente Juiz (confiabilidade, evidências e segurança)
+    │   ├── workflow.py             # Montagem do Grafo conectando todo o fluxo de execução
     │   │
     │   ├── guardrails/             # Barreiras de Segurança e Validação
     │   │   ├── __init__.py
@@ -79,9 +83,17 @@ uvicorn app.main:app --reload
 Configure `CORS_ORIGINS` com uma lista de origens web separadas por vírgula.
 Como a API aceita credenciais, o curinga `*` não é permitido.
 
+### Modelos dos agentes
+
+Os agentes usam `ChatGroq` por meio do LangChain e retornam contratos Pydantic.
+Por padrão, Orquestrador e Sintetizador usam `qwen/qwen3.6-27b`, enquanto os
+especialistas e o Juiz usam `openai/gpt-oss-120b`. Os modelos podem ser
+alterados pelas variáveis `GROQ_FAST_MODEL`, `GROQ_SPECIALIST_MODEL`. Os agentes especialistas tem um fallback para o modelo do
+`Gemini` o `gemini-3.6-flash`
+
+
 ## Verificações
 
 - `GET /` confirma que a API iniciou.
 - `GET /health/` executa `SELECT 1` no PostgreSQL e `ping` no MongoDB.
 - `pytest -q` executa os testes automatizados.
-- O workflow `.github/workflows/ci.yml` executa os testes em pushes e pull requests.
