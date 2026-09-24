@@ -2,7 +2,7 @@ from typing import Any
 
 from app.agent.base import StructuredAgent
 from app.agent.contracts import OrchestratorResult
-from app.agent.model_factory import ModelProfile, create_groq_chat_model
+from app.agent.llms import ModelProfile, create_chat_model
 from app.agent.prompts import ORQUESTRADOR_PROMPT_COMPLETO
 
 
@@ -17,7 +17,7 @@ class OrchestratorAgent:
                 "CONTEXTO_CONVERSA:\n{contexto_conversa}"
             ),
             output_schema=OrchestratorResult,
-            model=model or create_groq_chat_model(ModelProfile.FAST),
+            model=model or create_chat_model(ModelProfile.FAST),
         )
 
     def invoke(

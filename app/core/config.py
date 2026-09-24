@@ -22,7 +22,6 @@ class AppConfig(BaseModel):
     groq_fast_model: str
     groq_specialist_model: str
     gemini_specialist_model: str
-    groq_judge_model: str
     groq_timeout_seconds: float
     groq_max_retries: int
 
@@ -59,8 +58,6 @@ MONGODB_URI = CONFIG.mongodb_uri
 CORS_ORIGINS = CONFIG.cors_origins
 GROQ_FAST_MODEL = CONFIG.groq_fast_model
 GROQ_SPECIALIST_MODEL = CONFIG.groq_specialist_model
-GROQ_JUDGE_MODEL = CONFIG.groq_judge_model
-
 
 def validar_config() -> list[str]:
     """Devolve a lista de problemas de configuração (vazia = tudo certo)."""
