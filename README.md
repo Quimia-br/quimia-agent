@@ -4,67 +4,87 @@ O **quimia-agent** é um backend desenvolvido em **FastAPI** voltado para servir
 
 ---
 
-## 📁 Estrutura de Diretórios e Mapeamento de Arquivos `.py`
+## Estrutura de Diretórios e Mapeamento de Arquivos `.py`
 
 
 ```text
 quimia-agent/
-└── app/
-    ├── __init__.py
-    ├── main.py                     # Inicialização do FastAPI, CORS, middlewares, Lifespan e rotas
-    │
-    ├── agent/                      # Core de Inteligência Artificial e Orquestração
-    │   ├── __init__.py
-    │   ├── base.py                 # Base LangChain para agentes com saída estruturada
-    │   ├── contracts.py            # Contratos Pydantic entre os agentes
-    │   ├── llms.py                 # Seleção dos modelos Groq por perfil
-    │   ├── prompts.py              # Central de System Prompts de todos os agentes e guardrails
-    │   ├── orchestrator.py         # Agente Orquestrador (classificador de intenção e roteador)
-    │   ├── synthesizer.py          # Agente Sintetizador (consolida respostas no tom de voz da Kemi)
-    │   ├── judge.py                # Agente Juiz (confiabilidade, evidências e segurança)
-    │   ├── workflow.py             # Montagem do Grafo conectando todo o fluxo de execução
-    │   │
-    │   ├── guardrails/             # Barreiras de Segurança e Validação
-    │   │   ├── __init__.py
-    │   │   ├── input_guardrail.py  # Filtra ofensas, linguagem inadequada e temas fora de escopo
-    │   │   └── output_guardrail.py # Valida ética, formatação e segurança da resposta final
-    │   │
-    │   ├── specialists/            # Agentes Especialistas de Domínio
-    │   │   ├── __init__.py
-    │   │   ├── quimico_agent.py    # Dúvidas sobre química, rótulos e compatibilidades
-    │   │   ├── gps_agent.py        # Orientação de descarte correto e pontos de coleta (CEP/Bairro)
-    │   │   └── bau_agent.py        # Consulta ao catálogo pessoal do usuário e interações
-    │   │
-    │   └── tools/                  # Ferramentas Executáveis pelos Agentes
-    │       ├── __init__.py
-    │       ├── postgres_tool.py    # Tool de busca no catálogo/produtos no PostgreSQL
-    │       └── location_tool.py    # Tool de cruzamento e validação de CEP, Bairro e Cidade
-    │
-    ├── core/                       # Configurações Globais e Segurança
-    │   ├── __init__.py
-    │   ├── config.py               # Gestão de variáveis de ambiente (.env) via Pydantic
-    │   └── security.py             # Autenticação, validação de tokens JWT e chaves de API
-    │
-    ├── database/                   # Camada de Persistência Híbrida
-    │   ├── __init__.py
-    │   ├── postgres.py             # Engine, AsyncSession e conexão com PostgreSQL
-    │   ├── mongo.py                # Cliente Motor/Beanie e conexão com MongoDB
-    │   ├── models_pg.py            # Modelos relacionais (Catálogo de Produtos, Ecopontos/GPS)
-    │   └── models_mongo.py         # Mapeamento de documentos (Histórico de Chat e Sessões)
-    │
-    ├── routes/                     # Endpoints da API FastAPI
-    │   ├── __init__.py
-    │   ├── chat_routes.py          # Endpoint POST /chat (recebe requisição do app e dispara o workflow)
-    │   └── health_routes.py        # Endpoint GET /health (monitoramento do status dos serviços)
-    │
-    ├── schemas/                    # Validação de Payloads de Entrada/Saída (Pydantic)
-    │   ├── __init__.py
-    │   └── schemas.py              # Definição dos Schemas (ChatRequest e ChatResponse)
-    │
-    └── services/                   # Serviços Auxiliares de Negócio
-        ├── __init__.py
-        └── chat_service.py         # Camada intermediária de serviços do chat (integração DB/Workflow)
+├── app/
+│   ├── agent/                              # Core de IA e orquestração
+│   │   ├── guardrails/
+│   │   │   ├── input_guardrail.py          # Validação da entrada do usuário
+│   │   │   └── output_guardrail.py         # Validação da resposta final
+│   │   ├── specialists/                    # Agentes especialistas
+│   │   │   ├── faq/
+│   │   │   │   ├── faq_agent.py            # Agente de dúvidas gerais do Quimia
+│   │   │   │   ├── ingest.py               # Ingestão do PDF no Qdrant
+│   │   │   │   ├── retriever.py            # Recuperação semântica dos chunks
+│   │   │   │   └── vectorstore.py          # Clientes de embeddings e Qdrant
+│   │   │   ├── bau_agent.py                # Consultas pessoais, Estante e histórico
+│   │   │   ├── gps_agent.py                # Orientação segura de descarte
+│   │   │   └── quimico_agent.py            # Produtos, substâncias e compatibilidade
+│   │   ├── base.py                         # Base para agentes com saída estruturada
+│   │   ├── contracts.py                    # Contratos Pydantic entre os agentes
+│   │   ├── judge.py                        # Avaliação de confiabilidade e segurança
+│   │   ├── llms.py                         # Configuração dos modelos de linguagem
+│   │   ├── orchestrator.py                 # Classificação de intenção e roteamento
+│   │   ├── prompts.py                      # Prompts dos agentes
+│   │   ├── synthesizer.py                  # Consolidação das respostas
+│   │   └── workflow.py                     # Fluxo de execução dos agentes
+│   ├── core/
+│   │   └── config.py                       # Configuração e variáveis de ambiente
+│   ├── database/
+│   │   ├── mongo.py                        # Conexão com MongoDB
+│   │   └── postgres.py                     # Conexão com PostgreSQL
+│   ├── routes/
+│   │   ├── chat_routes.py                  # Rotas do chat
+│   │   └── health_routes.py                # Verificação de saúde dos serviços
+│   ├── schemas/
+│   │   └── schemas.py                      # Schemas de entrada e saída da API
+│   └── main.py                             # Inicialização da aplicação FastAPI
+├── data/
+│   └── quimia_instrucao_normativa_faq_funcionalidades_v1.0.pdf
+├── tests/
+│   ├── test_agents.py
+│   ├── test_config.py
+│   ├── test_faq.py
+│   ├── test_health.py
+│   └── test_llms.py
+├── .env
+├── .env.example
+├── .gitignore
+├── LICENSE
+├── README.md
+├── requirements-dev.txt
+└── requirements.txt
 ```
+
+## FAQ com RAG e Qdrant
+
+O agente de FAQ responde dúvidas gerais sobre o aplicativo mobile, o portal web,
+os perfis de uso, as funcionalidades e os limites do Kemi. A fonte autorizada é
+`data/quimia_instrucao_normativa_faq_funcionalidades_v1.0.pdf`.
+
+1. `python -m app.faq.ingest` lê o PDF e o divide em chunks de 700 caracteres,
+   com sobreposição de 150.
+2. O Gemini gera embeddings de 768 dimensões.
+3. Os chunks e os metadados de página são armazenados na collection
+   `quimia_faq_chunks` do Qdrant.
+4. Para cada pergunta, o retriever busca até seis chunks semanticamente
+   relacionados.
+5. O agente responde apenas com base nas evidências recuperadas. Quando não há
+   sustentação suficiente, ele informa que não encontrou a resposta no FAQ.
+
+Configure `GEMINI_API_KEY`, `QDRANT_URL` e, no Qdrant Cloud,
+`QDRANT_API_KEY`. Depois execute:
+
+```bash
+python -m app.faq.ingest
+```
+
+Rode a ingestão novamente sempre que o PDF oficial for substituído. O script é
+idempotente para a collection dedicada: remove os chunks anteriores antes de
+inserir a nova versão.
 
 ## Ambiente local
 
@@ -73,11 +93,8 @@ O projeto usa Python 3.12. As dependências de produção ficam em
 `requirements-dev.txt`.
 
 ```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
 python -m pip install -r requirements-dev.txt
-cp .env.example .env
-uvicorn app.main:app --reload
+python -m uvicorn app.main:app --reload
 ```
 
 Configure `CORS_ORIGINS` com uma lista de origens web separadas por vírgula.
