@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-AgentName = Literal["quimico", "bau", "gps"]
+AgentName = Literal["quimico", "bau", "gps", "faq"]
 
 
 class RoutePlan(BaseModel):
@@ -58,6 +58,10 @@ class VaultResult(SpecialistResult):
 
 class GpsResult(SpecialistResult):
     dominio: Literal["gps"] = "gps"
+
+
+class FaqResult(SpecialistResult):
+    dominio: Literal["faq"] = "faq"
 
 
 class SynthesisResult(BaseModel):

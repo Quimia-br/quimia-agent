@@ -11,8 +11,13 @@ langchain
 langgraph
 langchain-google-genai
 langchain-groq
+langchain-text-splitters
 google-generativeai
 groq
+
+# FAQ com RAG
+pypdf
+qdrant-client
 
 # Validação e Configuração
 pydantic

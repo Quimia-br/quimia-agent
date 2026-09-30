@@ -71,6 +71,29 @@ def test_orchestrator_uses_structured_contract():
     assert result.rotas[0].agente == "quimico"
 
 
+def test_orchestrator_accepts_faq_route():
+    model = FakeChatModel(
+        {
+            "status": "roteado",
+            "pergunta_original": "Como funciona a Proximidade?",
+            "rotas": [
+                {
+                    "id": "r1",
+                    "agente": "faq",
+                    "objetivo": "Explicar a funcionalidade Proximidade.",
+                    "depende_de": [],
+                }
+            ],
+        }
+    )
+
+    result = OrchestratorAgent(model=model).invoke(
+        "Como funciona a Proximidade?"
+    )
+
+    assert result.rotas[0].agente == "faq"
+
+
 @pytest.mark.parametrize(
     ("agent_class", "domain"),
     [(ChemicalAgent, "quimico"), (VaultAgent, "bau"), (GpsAgent, "gps")],
