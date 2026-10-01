@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import CORS_ORIGINS, validar_config
 from app.database.mongo import close_mongo
 from app.routes.health_routes import router as health_router
+from app.routes.chat_routes import router as chat_router
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     application = FastAPI(
-        title="Quimia Agent API",
+        title="Kemi API",
         description="Backend do assistente Kemi com múltiplos agentes e guardrails.",
         version="1.0.0",
         lifespan=lifespan,
@@ -44,10 +45,11 @@ def create_app() -> FastAPI:
     )
 
     application.include_router(health_router)
+    application.include_router(chat_router)
 
     @application.get("/")
     async def root():
-        return {"message": "Quimia Agent API está online."}
+        return {"message": "Kemi API está online."}
 
     return application
 

@@ -65,7 +65,7 @@ O agente de FAQ responde dúvidas gerais sobre o aplicativo mobile, o portal web
 os perfis de uso, as funcionalidades e os limites do Kemi. A fonte autorizada é
 `data/quimia_instrucao_normativa_faq_funcionalidades_v1.0.pdf`.
 
-1. `python -m app.faq.ingest` lê o PDF e o divide em chunks de 700 caracteres,
+1. `python -m app.agent.specialists.faq` lê o PDF e o divide em chunks de 700 caracteres,
    com sobreposição de 150.
 2. O Gemini gera embeddings de 768 dimensões.
 3. Os chunks e os metadados de página são armazenados na collection
@@ -79,7 +79,7 @@ Configure `GEMINI_API_KEY`, `QDRANT_URL` e, no Qdrant Cloud,
 `QDRANT_API_KEY`. Depois execute:
 
 ```bash
-python -m app.faq.ingest
+python -m app.agent.specialists.faq.ingest
 ```
 
 Rode a ingestão novamente sempre que o PDF oficial for substituído. O script é
@@ -114,3 +114,70 @@ alterados pelas variáveis `GROQ_FAST_MODEL`, `GROQ_SPECIALIST_MODEL`. Os agente
 - `GET /` confirma que a API iniciou.
 - `GET /health/` executa `SELECT 1` no PostgreSQL e `ping` no MongoDB.
 - `pytest -q` executa os testes automatizados.
+
+## Tools dos especialistas
+
+Os especialistas estão organizados em `specialists/bau`, `specialists/quimico`,
+`specialists/gps` e `specialists/faq`, cada um com seu arquivo de agente.
+Químico e Baú têm arquivos próprios de tools; GPS não possui tools.
+
+- Químico: buscar_produto, consultar_composicao_produto,
+  verificar_compatibilidade_produtos, consultar_incompatibilidades_produto,
+  consultar_primeiros_socorros.
+- Baú: listar_estantes_usuario, listar_produtos_estante,
+  listar_produtos_por_comodo, consultar_historico_misturas,
+  consultar_historico_recomendacoes.
+- FAQ: consultar_faq, executada obrigatoriamente antes de responder.
+- GPS: agente com LLM e sem tools, com orientação genérica e conservadora, direcionando à Proximidade.
+
+Crie `VaultAgent(user_id=uuid_autenticado)` com a identidade fornecida pelo
+backend. O modelo não pode selecionar outro usuário. Todas as consultas são
+parametrizadas e somente leitura, com limite de linhas e timeout.
+Químico e Baú executam até seis rodadas de tools antes da síntese estruturada.
+Compatibilidade usa fn_match_produtos. A tool converte o retorno compativel
+(ausência de regra encontrada) em nao_avaliado, informando que não há dados
+suficientes no app para confirmar segurança. Incompatibilidades são preservadas. Não há gravação de histórico
+pelas tools. As consultas usam FDS ativas; ausência de dados não confirma segurança.
+O vínculo de cômodo segue o esquema atual: produto.id_comodo, com verificação
+simultânea do dono do cômodo, da estante e da associação do produto.
+As datas dos históricos usam início inclusivo e fim exclusivo em ISO 8601;
+forneça o fuso America/Sao_Paulo ao converter períodos relativos.
+
+
+## Chat e grafo
+
+`POST /chat` recebe `user_id` (UUID do usuário), `session_id` e `pergunta`,
+e retorna `{"resposta": "..."}`. A pergunta aceita até 4000 caracteres.
+Esta rota permite testes locais pelo Swagger em `http://localhost:8000/docs`,
+sem autenticação ou token de backend. Use um UUID real do banco para testar o Baú.
+
+Execute `python -m uvicorn app.main:app --reload` e no Swagger selecione
+POST /chat -> Try it out. Exemplo de corpo:
+
+```json
+{
+  "pergunta": "Como funciona a Estante?",
+  "session_id": "teste-1",
+  "user_id": "00000000-0000-0000-0000-000000000001"
+}
+```
+
+O fluxo implementado em `app/agent/workflow.py` usa LangGraph:
+orquestrador -> especialistas -> sintetizador -> juiz.
+Rotas independentes executam em paralelo; rotas dependentes recebem os resultados
+anteriores. Quando uma dependência exige esclarecimento, sua consulta dependente
+não é executada. Pedidos fora de escopo ou ambíguos seguem para sintetizador e
+juiz sem chamar especialistas.
+
+O juiz recebe as evidências das tools e do FAQ. Se pedir revisão, a resposta
+volta ao sintetizador uma vez e é julgada novamente. Respostas bloqueadas ou
+que continuem sem aprovação são substituídas por uma mensagem conservadora.
+Erros em especialistas são tratados como indisponibilidade, não como evidência.
+
+O MongoDB armazena pares de pergunta/resposta em `chat_turns`, particionados
+por `user_id` e `session_id`. O histórico não é recuperado nem enviado ao grafo;
+a memória com resumo será implementada posteriormente.
+O turno só é salvo após o fluxo terminar. Falhas de persistência ou processamento
+retornam 503 com uma mensagem pública, sem detalhes de credenciais.
+A execução do grafo tem timeout de 180 segundos. Os guardrails separados ainda
+não fazem parte deste fluxo; a avaliação final é realizada pelo juiz.

@@ -48,11 +48,11 @@ class SpecialistResult(BaseModel):
     esclarecer: str | None = None
 
 
-class ChemicalResult(SpecialistResult):
+class QuimicoResult(SpecialistResult):
     dominio: Literal["quimico"] = "quimico"
 
 
-class VaultResult(SpecialistResult):
+class BauResult(SpecialistResult):
     dominio: Literal["bau"] = "bau"
 
 

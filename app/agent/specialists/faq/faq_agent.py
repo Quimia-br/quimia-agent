@@ -7,7 +7,7 @@ from app.agent.base import StructuredAgent
 from app.agent.contracts import Evidence, FaqResult
 from app.agent.llms import ModelProfile, create_chat_model
 from app.agent.prompts import FAQ_PROMPT_COMPLETO
-from app.agent.specialists.faq.retriever import retrieve_faq_evidence
+from app.agent.specialists.faq.faq_tools import consultar_faq
 
 FaqRetriever = Callable[[str], list[Evidence]]
 FAQ_NOT_FOUND = "Não encontrei essa informação no FAQ oficial do Quimia."
@@ -21,7 +21,10 @@ class FaqAgent:
         model: Any | None = None,
         retriever: FaqRetriever | None = None,
     ) -> None:
-        self._retriever = retriever or retrieve_faq_evidence
+        self._retriever = retriever or (
+            lambda question: [Evidence.model_validate(item)
+                              for item in consultar_faq.invoke({"pergunta": question})]
+        )
         self._agent = StructuredAgent(
             system_prompt=FAQ_PROMPT_COMPLETO,
             human_template=(

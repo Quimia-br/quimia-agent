@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
 
-from app.database.mongo import get_db
-from app.database.postgres import get_conn
+from app.database.mongo import get_mongo
+from app.database.postgres import get_pg
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ def health_check():
     is_healthy = True
 
     try:
-        with get_conn() as conn:
+        with get_pg() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("SELECT 1")
                 if cursor.fetchone() != (1,):
@@ -41,7 +41,7 @@ def health_check():
         is_healthy = False
 
     try:
-        db = get_db()
+        db = get_mongo()
         db.client.admin.command("ping")
         health_status["services"]["mongodb"] = "healthy"
     except Exception:
