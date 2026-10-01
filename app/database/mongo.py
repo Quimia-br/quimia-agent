@@ -5,7 +5,7 @@ from app.core.config import MONGODB_URI
 mongo: MongoClient | None = None
 
 
-def get_db():
+def get_mongo():
     """Obtém o banco somente quando uma operação realmente precisa dele."""
     global mongo
     if not MONGODB_URI:

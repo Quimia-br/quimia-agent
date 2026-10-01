@@ -31,6 +31,12 @@ class ChatModelWithFallback:
         fallback = self._fallback.with_structured_output(schema)
         return primary.with_fallbacks([fallback])
 
+    def bind_tools(self, tools: list) -> Any:
+        primary = self._primary.bind_tools(tools)
+        if self._fallback is None:
+            return primary
+        return primary.with_fallbacks([self._fallback.bind_tools(tools)])
+
 
 def create_chat_model(profile: ModelProfile) -> ChatModelWithFallback:
     """Cria o modelo do perfil e habilita o fallback dos agentes especialistas."""

@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 import app.agent.judge as judge_module
 from app.agent.contracts import (
-    ChemicalResult,
+    QuimicoResult,
     Evidence,
     JudgeResult,
     OrchestratorResult,
@@ -16,9 +16,9 @@ from app.agent.contracts import (
 )
 from app.agent.judge import JudgeAgent
 from app.agent.orchestrator import OrchestratorAgent
-from app.agent.specialists.bau_agent import VaultAgent
-from app.agent.specialists.gps_agent import GpsAgent
-from app.agent.specialists.quimico_agent import ChemicalAgent
+from app.agent.specialists.bau.bau_agent import BauAgent
+from app.agent.specialists.gps.gps_agent import GpsAgent
+from app.agent.specialists.quimico.quimico_agent import ChemicalAgent
 from app.agent.synthesizer import SynthesizerAgent
 
 
@@ -30,6 +30,10 @@ class FakeChatModel:
     def with_structured_output(self, output_schema):
         self.output_schema = output_schema
         return RunnableLambda(lambda _: self.response)
+
+    def bind_tools(self, tools):
+        from langchain_core.messages import AIMessage
+        return RunnableLambda(lambda _: AIMessage(content="", tool_calls=[]))
 
 
 def test_judge_uses_specialist_model_profile(monkeypatch):
@@ -96,7 +100,7 @@ def test_orchestrator_accepts_faq_route():
 
 @pytest.mark.parametrize(
     ("agent_class", "domain"),
-    [(ChemicalAgent, "quimico"), (VaultAgent, "bau"), (GpsAgent, "gps")],
+    [(ChemicalAgent, "quimico"), (BauAgent, "bau"), (GpsAgent, "gps")],
 )
 def test_specialists_return_validated_results(agent_class, domain):
     model = FakeChatModel(
@@ -107,7 +111,8 @@ def test_specialists_return_validated_results(agent_class, domain):
         }
     )
 
-    result = agent_class(model=model).invoke("Pergunta", "Consultar o domínio")
+    kwargs = {"user_id": "00000000-0000-0000-0000-000000000001"} if domain == "bau" else {}
+    result = agent_class(model=model, **kwargs).invoke("Pergunta", "Consultar o domínio")
 
     assert isinstance(result, SpecialistResult)
     assert result.dominio == domain
@@ -124,7 +129,7 @@ def test_synthesizer_consolidates_structured_inputs():
             )
         ],
     )
-    specialist = ChemicalResult(
+    specialist = QuimicoResult(
         intencao="consultar", resposta="Resultado confirmado."
     )
 
@@ -145,7 +150,7 @@ def test_judge_evaluates_answer_and_evidence():
         }
     )
     answer = SynthesisResult(resposta="Use conforme o rótulo.")
-    specialist = ChemicalResult(
+    specialist = QuimicoResult(
         intencao="consultar", resposta="O rótulo orienta esse uso."
     )
     evidence = Evidence(

@@ -50,8 +50,8 @@ def configure_test_app(monkeypatch):
 
 def test_health_returns_dependencies_answer(monkeypatch):
     configure_test_app(monkeypatch)
-    monkeypatch.setattr(health_routes, "get_conn", healthy_postgres)
-    monkeypatch.setattr(health_routes, "get_db", lambda: FakeDatabase())
+    monkeypatch.setattr(health_routes, "get_pg", healthy_postgres)
+    monkeypatch.setattr(health_routes, "get_mongo", lambda: FakeDatabase())
 
     with TestClient(main_module.app) as client:
         response = client.get("/health/")
@@ -72,8 +72,8 @@ def test_health_returns_error_details(monkeypatch):
         raise RuntimeError("password=secret")
         yield
 
-    monkeypatch.setattr(health_routes, "get_conn", failing_postgres)
-    monkeypatch.setattr(health_routes, "get_db", lambda: FakeDatabase())
+    monkeypatch.setattr(health_routes, "get_pg", failing_postgres)
+    monkeypatch.setattr(health_routes, "get_mongo", lambda: FakeDatabase())
 
     with TestClient(main_module.app) as client:
         response = client.get("/health/")

@@ -3,7 +3,7 @@ import psycopg2
 from app.core.config import DATABASE_URL
 
 @contextmanager
-def get_conn():
+def get_pg():
     """Garante abertura e fechamento/rollback automático da conexão."""
     conn = psycopg2.connect(DATABASE_URL, connect_timeout=5)
     try:
