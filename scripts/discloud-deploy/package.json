@@ -1,0 +1,11 @@
+{
+  "name": "quimia-discloud-deploy",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "discloud.app": "2.0.4"
+  }
+}

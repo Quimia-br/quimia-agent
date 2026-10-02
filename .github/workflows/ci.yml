@@ -1,0 +1,403 @@
+name: Quimia Agent CI and Discloud Release
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: '3.12'
+  COVERAGE_MIN: '80'
+  # Únicos valores que mudam entre quimia-agent e quimia-extractor-ai.
+  ARTIFACT_NAME: quimia-agent-discloud
+  ZIP_PATH: target/discloud/quimia-agent.zip
+  DISCLOUD_URL: https://quimia-agent.discloud.app
+  SMOKE_PATH: /
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Set up Python and pip cache
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies and verify the application imports
+        id: build
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip check
+          python -m compileall -q app
+          python -c "import app.main"
+
+      - name: Explain the Build check
+        if: always()
+        env:
+          CHECK_RESULT: ${{ job.status }}
+        run: |
+          {
+            echo '### Build'
+            echo
+            echo "**Resultado:** ${CHECK_RESULT}"
+            echo
+            echo '**O que valida:** instalação das dependências de produção, consistência entre elas e importação da aplicação FastAPI.'
+            echo
+            echo '**Critério de aprovação:** `pip install -r requirements.txt` e `pip check` terminam sem erro, `compileall` compila `app/` e `import app.main` funciona.'
+            if [ "${CHECK_RESULT}" = success ]; then
+              echo
+              echo 'As dependências resolvem e a aplicação é importável.'
+            else
+              echo
+              echo 'Não passou. Abra o passo de build acima; os logs indicam o conflito de dependências, o erro de sintaxe ou a falha de importação.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Set up Python and pip cache
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run unit tests
+        id: tests
+        run: python -m pytest -q --junitxml=reports/junit.xml
+
+      - name: Preserve pytest reports for diagnosis
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-reports
+          path: reports/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Explain the Unit tests check
+        if: always()
+        env:
+          CHECK_RESULT: ${{ job.status }}
+        run: |
+          {
+            echo '### Unit tests'
+            echo
+            echo "**Resultado:** ${CHECK_RESULT}"
+            echo
+            echo '**O que valida:** testes pytest dos agentes, do fluxo de chat, das ferramentas, do FAQ, da configuração e do health check.'
+            echo
+            echo '**Critério de aprovação:** `pytest` termina sem testes com falha ou erro.'
+            if [ "${CHECK_RESULT}" = success ]; then
+              echo
+              echo 'Todos os testes executados passaram.'
+            else
+              echo
+              echo 'Não passou. Consulte o log do pytest e baixe o artefato `pytest-reports` para ver o teste e a asserção que falharam.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  coverage:
+    name: Coverage gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Set up Python and pip cache
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run tests with the coverage threshold
+        id: coverage
+        run: |
+          python -m pytest -q --cov=app --cov-report=term-missing --cov-report=xml:reports/coverage.xml \
+            --cov-fail-under="${COVERAGE_MIN}"
+
+      - name: Preserve coverage report for diagnosis
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: reports/coverage.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Explain the Coverage gate
+        if: always()
+        env:
+          CHECK_RESULT: ${{ job.status }}
+        run: |
+          {
+            echo '### Coverage gate'
+            echo
+            echo "**Resultado:** ${CHECK_RESULT}"
+            echo
+            echo '**O que valida:** cobertura de linhas do pacote `app/` medida pelo pytest-cov.'
+            echo
+            echo "**Critério de aprovação:** cobertura total igual ou superior a ${COVERAGE_MIN}%."
+            if [ "${CHECK_RESULT}" = success ]; then
+              echo
+              echo 'Os testes passaram e a cobertura mínima foi atingida.'
+            else
+              echo
+              echo 'Não passou. Consulte a tabela `term-missing` no log e baixe `coverage-report` para identificar as linhas sem cobertura.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  artifact:
+    name: Discloud artifact
+    needs: [build, unit-tests, coverage]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Test the Discloud deployment helper
+        working-directory: scripts/discloud-deploy
+        run: node --test deploy.test.mjs
+
+      - name: Create and validate the Discloud ZIP
+        id: package
+        run: python scripts/package_discloud_release.py "${ZIP_PATH}"
+
+      - name: Upload the release artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ZIP_PATH }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Explain the Discloud artifact check
+        if: always()
+        env:
+          CHECK_RESULT: ${{ job.status }}
+        run: |
+          {
+            echo '### Discloud artifact'
+            echo
+            echo "**Resultado:** ${CHECK_RESULT}"
+            echo
+            echo '**O que valida:** testes do helper de deploy e criação do pacote que será enviado à Discloud.'
+            echo
+            echo '**Critério de aprovação:** o ZIP existe, contém `app/`, `requirements.txt` e `discloud.config` (e `data/`, quando houver), e não contém `.env`.'
+            if [ "${CHECK_RESULT}" = success ]; then
+              echo
+              echo 'O pacote foi validado e publicado como artefato do workflow.'
+            else
+              echo
+              echo 'Não passou. Consulte os testes do helper ou a validação do ZIP nos logs.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-discloud:
+    name: Deploy to Discloud
+    needs: [build, unit-tests, coverage, artifact]
+    if: github.event_name == 'release' && github.event.action == 'published'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: discloud
+      url: ${{ env.DISCLOUD_URL }}
+    steps:
+      - name: Checkout the released source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: scripts/discloud-deploy/package-lock.json
+
+      - name: Download the validated release ZIP
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: target/discloud
+
+      - name: Install the locked Discloud SDK
+        working-directory: scripts/discloud-deploy
+        run: npm ci --no-audit --no-fund
+
+      - name: Re-run deploy helper tests before using credentials
+        working-directory: scripts/discloud-deploy
+        run: node --test deploy.test.mjs
+
+      - name: Upload the release to Discloud
+        id: upload
+        env:
+          DISCLOUD_TOKEN: ${{ secrets.DISCLOUD_TOKEN }}
+          DISCLOUD_APP_ID: ${{ secrets.DISCLOUD_APP_ID }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          DISCLOUD_ARCHIVE: ${{ env.ZIP_PATH }}
+        run: node scripts/discloud-deploy/deploy.mjs
+
+      - name: Wait for the application smoke route
+        id: smoke-check
+        run: |
+          set -euo pipefail
+          endpoint="${DISCLOUD_URL}${SMOKE_PATH}"
+          deadline=$((SECONDS + 180))
+          last_status='000'
+
+          while (( SECONDS < deadline )); do
+            remaining=$((deadline - SECONDS))
+            request_timeout=10
+            if (( remaining < request_timeout )); then
+              request_timeout=$remaining
+            fi
+
+            last_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+              --connect-timeout "$request_timeout" --max-time "$request_timeout" \
+              "$endpoint" || true)"
+
+            if [ "$last_status" = '200' ]; then
+              echo "Smoke check passed: ${SMOKE_PATH} answered HTTP 200."
+              exit 0
+            fi
+
+            case "$last_status" in
+              000|5??|404) ;;
+              *)
+                echo "Smoke check expected HTTP 200 from ${SMOKE_PATH}, received HTTP $last_status." >&2
+                exit 1
+                ;;
+            esac
+
+            remaining=$((deadline - SECONDS))
+            if (( remaining <= 0 )); then
+              break
+            fi
+            sleep_for=5
+            if (( remaining < sleep_for )); then
+              sleep_for=$remaining
+            fi
+            sleep "$sleep_for"
+          done
+
+          echo "Smoke check timed out after 180 seconds; last HTTP status was $last_status." >&2
+          exit 1
+
+      - name: Explain the Discloud deploy check
+        if: always()
+        env:
+          CHECK_RESULT: ${{ job.status }}
+        run: |
+          {
+            echo '### Deploy to Discloud'
+            echo
+            echo "**Resultado:** ${CHECK_RESULT}"
+            echo
+            echo '**O que valida:** criação inicial ou atualização da aplicação Discloud e inicialização da aplicação hospedada.'
+            echo
+            echo '**Critério de aprovação:** na primeira publicação, a conta não possui apps e o SDK cria a aplicação; nas próximas, `DISCLOUD_APP_ID` seleciona o app a atualizar. Em ambos os casos, a rota de smoke check (`SMOKE_PATH`) deve retornar HTTP 200, confirmando que a aplicação iniciou com o runtime configurado.'
+            if [ "${CHECK_RESULT}" = success ]; then
+              echo
+              echo 'Upload/criação e smoke check foram concluídos. Se este foi o primeiro deploy, configure `DISCLOUD_APP_ID` antes da próxima Release.'
+            else
+              echo
+              echo 'Não passou. Verifique os logs do upload, o token, o ID do app (obrigatório quando a conta já possui apps), as variáveis de runtime da Discloud (veja `.env.example`) e a inicialização da aplicação.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  workflow-summary:
+    name: CI summary
+    needs: [build, unit-tests, coverage, artifact, deploy-discloud]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize every gate and enforce the workflow result
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          TESTS_RESULT: ${{ needs.unit-tests.result }}
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
+          ARTIFACT_RESULT: ${{ needs.artifact.result }}
+          DEPLOY_RESULT: ${{ needs.deploy-discloud.result }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Resultado geral do workflow'
+            echo
+            echo '| Check | Resultado | O que prova |'
+            echo '|---|---|---|'
+            printf '| Build | `%s` | Dependências resolvem e a aplicação FastAPI é importável. |\n' "$BUILD_RESULT"
+            printf '| Unit tests | `%s` | Testes pytest. |\n' "$TESTS_RESULT"
+            printf '| Coverage gate | `%s` | Cobertura mínima de %s%% em `app/`. |\n' "$COVERAGE_RESULT" "${COVERAGE_MIN}"
+            printf '| Discloud artifact | `%s` | ZIP validado com `app/`, `requirements.txt` e `discloud.config`. |\n' "$ARTIFACT_RESULT"
+            if [ "$EVENT_NAME" = 'release' ]; then
+              printf '| Deploy to Discloud | `%s` | Upload e smoke check HTTP 200. |\n' "$DEPLOY_RESULT"
+            else
+              printf '| Deploy to Discloud | `%s` | Ignorado: só executa em Release publicada. |\n' "$DEPLOY_RESULT"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$BUILD_RESULT" != success ] \
+            || [ "$TESTS_RESULT" != success ] \
+            || [ "$COVERAGE_RESULT" != success ] \
+            || [ "$ARTIFACT_RESULT" != success ]; then
+            echo 'At least one required CI gate did not succeed.' >&2
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = 'release' ] && [ "$DEPLOY_RESULT" != success ]; then
+            echo 'The published release did not complete the Discloud deployment check.' >&2
+            exit 1
+          fi
+
+          echo 'All checks required for this event succeeded.'
