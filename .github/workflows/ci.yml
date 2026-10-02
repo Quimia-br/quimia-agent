@@ -95,7 +95,7 @@ jobs:
 
       - name: Run unit tests
         id: tests
-        run: pytest -q --junitxml=reports/junit.xml
+        run: python -m pytest -q --junitxml=reports/junit.xml
 
       - name: Preserve pytest reports for diagnosis
         if: always()
@@ -153,7 +153,7 @@ jobs:
       - name: Run tests with the coverage threshold
         id: coverage
         run: |
-          pytest -q --cov=app --cov-report=term-missing --cov-report=xml:reports/coverage.xml \
+          python -m pytest -q --cov=app --cov-report=term-missing --cov-report=xml:reports/coverage.xml \
             --cov-fail-under="${COVERAGE_MIN}"
 
       - name: Preserve coverage report for diagnosis
