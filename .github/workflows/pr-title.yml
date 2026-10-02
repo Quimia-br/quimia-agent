@@ -1,0 +1,49 @@
+name: Pull request title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    name: PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Conventional Commits title
+        id: title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([[:alnum:]][[:alnum:]./_-]*\))?!?: .+'
+          if [[ "$PR_TITLE" =~ $pattern ]]; then
+            echo 'PR title follows Conventional Commits.'
+          else
+            echo 'Invalid PR title. Expected: tipo(scope opcional)!: descrição em português.' >&2
+            exit 1
+          fi
+
+      - name: Explain the PR title check
+        if: always()
+        env:
+          CHECK_RESULT: ${{ job.status }}
+        run: |
+          {
+            echo '### PR title'
+            echo
+            echo "**Resultado:** ${CHECK_RESULT}"
+            echo
+            echo '**O que valida:** formato Conventional Commits usado pelo histórico e pela revisão do projeto.'
+            echo
+            echo '**Critério de aprovação:** `tipo(scope opcional)!: descrição`. A convenção do projeto pede a descrição em português; o workflow valida o formato, não o idioma.'
+            if [ "${CHECK_RESULT}" = success ]; then
+              echo
+              echo 'O título atende ao formato esperado.'
+            else
+              echo
+              echo 'Não passou. Edite o título do PR; exemplos válidos: `ci(actions): adiciona deploy por release` ou `fix(account): corrige validação`.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
