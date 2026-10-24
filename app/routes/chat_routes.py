@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 
 from app.agent.workflow import run_chat
+from app.database.chat_history import load_chat_context
 from app.database.mongo import get_mongo
 from app.schemas.schemas import ChatRequest, ChatResponse
 
@@ -25,7 +26,8 @@ async def conversar(request: ChatRequest) -> ChatResponse:
     """Uma mensagem do usuário, uma resposta do Kemi."""
     user_id = str(request.user_id)
     try:
-        answer = await asyncio.wait_for(run_chat(request.pergunta, user_id), timeout=180)
+        context = await asyncio.to_thread(load_chat_context, user_id, request.session_id)
+        answer = await asyncio.wait_for(run_chat(request.pergunta, user_id, context), timeout=180)
         await asyncio.to_thread(save_turn, user_id, request.session_id, request.pergunta, answer)
         return ChatResponse(resposta=answer)
     except Exception:

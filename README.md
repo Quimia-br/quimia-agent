@@ -174,9 +174,16 @@ volta ao sintetizador uma vez e é julgada novamente. Respostas bloqueadas ou
 que continuem sem aprovação são substituídas por uma mensagem conservadora.
 Erros em especialistas são tratados como indisponibilidade, não como evidência.
 
-O MongoDB armazena pares de pergunta/resposta em `chat_turns`, particionados
-por `user_id` e `session_id`. O histórico não é recuperado nem enviado ao grafo;
-a memória com resumo será implementada posteriormente.
+O MongoDB armazena pares de pergunta/resposta em `chat_turns`, com `user_id`,
+`session_id`, `pergunta`, `resposta` e `criado_em`. Antes de responder, o chat
+recupera até oito turnos anteriores do mesmo usuário e da mesma sessão, em
+ordem cronológica, e os envia como contexto ao orquestrador e aos especialistas
+que recebem histórico. Cada pergunta e resposta é limitada a 1.000 e 2.000
+caracteres no contexto, respectivamente. O histórico ajuda a interpretar a
+pergunta atual, mas não serve como evidência técnica sobre produtos ou riscos.
+O endpoint `/chat` recebe `user_id` do próprio cliente e não autentica essa
+identidade; a integração com o aplicativo precisa validar o usuário antes de
+expor o histórico em produção.
 O turno só é salvo após o fluxo terminar. Falhas de persistência ou processamento
 retornam 503 com uma mensagem pública, sem detalhes de credenciais.
 A execução do grafo tem timeout de 180 segundos. Os guardrails separados ainda
