@@ -117,6 +117,7 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None, factory=spec
     for name, node in [("orquestrador", orchestrate), ("especialistas", specialists),
                        ("sintetizador", synthesize), ("juiz", evaluate), ("revisar", revise), ("finalizar", finish)]:
         graph.add_node(name, node)
+        
     graph.add_edge(START, "orquestrador")
     graph.add_edge("orquestrador", "especialistas")
     graph.add_edge("especialistas", "sintetizador")
