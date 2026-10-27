@@ -6,10 +6,21 @@ import pytest
 from fastapi.testclient import TestClient
 from app.agent.contracts import OrchestratorResult, RoutePlan, JudgeResult, SynthesisResult, SpecialistResult, Evidence
 from app.agent.workflow import build_graph, SAFE_RESPONSE
+from app.agent.guardrails.input_guardrail import InputDecision
 import app.main as main
 import app.routes.chat_routes as routes
 import app.database.chat_history as chat_history
 from app.schemas.schemas import ChatRequest
+
+
+class AllowedInput:
+    async def ainvoke(self, question):
+        return InputDecision(categoria="permitido", motivo="Pedido permitido")
+
+
+class PassthroughOutput:
+    async def ainvoke(self, question, answer, specialists, evidence):
+        return answer
 
 
 def test_graph_dependencies_evidence_and_revision():
@@ -40,6 +51,7 @@ def test_graph_dependencies_evidence_and_revision():
             return JudgeResult(veredito="revisar" if self.count == 1 else "aprovado", confianca=1,
                                justificativa="Avaliação", correcoes_necessarias=["Corrigir"] if self.count == 1 else [])
     graph = build_graph(orchestrator=Orchestrator(), synthesizer=Synthesizer(), judge=Judge(),
+                        input_guardrail=AllowedInput(), output_guardrail=PassthroughOutput(),
                         factory=lambda name, owner: Specialist(name))
     result = asyncio.run(graph.ainvoke({"pergunta": "Pergunta", "user_id": str(uuid4()), "contexto": "Histórico"}))
     assert events == ["orquestrador", "bau", "quimico", "sintetizador", "juiz", "sintetizador", "juiz"]
@@ -58,7 +70,8 @@ def test_unapproved_candidate_is_never_delivered(verdict):
             return JudgeResult(veredito=verdict, confianca=1, justificativa="Problema",
                                riscos_seguranca=["Risco"] if verdict == "bloqueado" else [],
                                correcoes_necessarias=["Corrigir"] if verdict == "revisar" else [])
-    result = asyncio.run(build_graph(orchestrator=Orchestrator(), synthesizer=Synthesizer(), judge=Judge()).ainvoke(
+    result = asyncio.run(build_graph(orchestrator=Orchestrator(), synthesizer=Synthesizer(), judge=Judge(),
+                                    input_guardrail=AllowedInput(), output_guardrail=PassthroughOutput()).ainvoke(
         {"pergunta": "Pergunta", "user_id": str(uuid4()), "contexto": ""}))
     assert result["resposta"] == SAFE_RESPONSE
     assert result["revisoes"] <= 1
