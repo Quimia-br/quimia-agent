@@ -6,11 +6,15 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 
 from app.agent.workflow import run_chat
+from app.agent.summarizer import SessionSummarizer
 from app.database.chat_history import load_chat_context
+from app.database.chat_summaries import has_summary, load_session_turns, save_summary
 from app.database.mongo import get_mongo
-from app.schemas.schemas import ChatRequest, ChatResponse
+from app.schemas.schemas import ChatRequest, ChatResponse, CloseSessionRequest, CloseSessionResponse
 
 logger = logging.getLogger(__name__)
+
+SUMMARY_TIMEOUT_SECONDS = 60
 
 router = APIRouter(tags=["chat"])
 
@@ -33,3 +37,21 @@ async def conversar(request: ChatRequest) -> ChatResponse:
     except Exception:
         logger.exception("Falha ao processar chat")
         raise HTTPException(503, "Não foi possível concluir sua mensagem agora. Tente novamente em instantes.") from None
+
+
+@router.post("/chat/sessions/close", response_model=CloseSessionResponse)
+async def encerrar_sessao(request: CloseSessionRequest) -> CloseSessionResponse:
+    """Resume a sessão encerrada e guarda o resumo no MongoDB. Repetir a chamada não gera outro resumo."""
+    user_id = str(request.user_id)
+    try:
+        if await asyncio.to_thread(has_summary, user_id, request.session_id):
+            return CloseSessionResponse(session_id=request.session_id, status="ja_resumida")
+        turns = await asyncio.to_thread(load_session_turns, user_id, request.session_id)
+        if not turns:
+            return CloseSessionResponse(session_id=request.session_id, status="sem_turnos")
+        summary = await asyncio.wait_for(SessionSummarizer().ainvoke(turns), timeout=SUMMARY_TIMEOUT_SECONDS)
+        await asyncio.to_thread(save_summary, user_id, request.session_id, summary.resumo, len(turns))
+        return CloseSessionResponse(session_id=request.session_id, status="resumida")
+    except Exception:
+        logger.exception("Falha ao encerrar a sessão")
+        raise HTTPException(503, "Não foi possível encerrar a sessão agora. Tente novamente em instantes.") from None

@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
@@ -30,3 +31,30 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     resposta: str = Field(..., description="Resposta final para o usuário")
    
+
+
+class CloseSessionRequest(BaseModel):
+    session_id: str = Field(
+        ...,
+        min_length=1, max_length=128,
+        description="ID da sessão a encerrar."
+    )
+    user_id: UUID = Field(
+        ...,
+        description="Identificador do usuário dono da sessão"
+    )
+
+    @field_validator("session_id")
+    @classmethod
+    def reject_blank(cls, value):
+        if not value.strip():
+            raise ValueError("O campo não pode conter apenas espaços.")
+        return value
+
+
+class CloseSessionResponse(BaseModel):
+    session_id: str
+    status: Literal["resumida", "ja_resumida", "sem_turnos"] = Field(
+        ...,
+        description="resumida: resumo novo salvo; ja_resumida: a sessão já tinha resumo; sem_turnos: nada a resumir."
+    )

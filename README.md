@@ -37,7 +37,7 @@ quimia-agent/
 │   │   ├── mongo.py                        # Conexão com MongoDB
 │   │   └── postgres.py                     # Conexão com PostgreSQL
 │   ├── routes/
-│   │   ├── chat_routes.py                  # Rotas do chat
+│   │   ├── chat_routes.py                  # Rotas do chat e do encerramento de sessão
 │   │   └── health_routes.py                # Verificação de saúde dos serviços
 │   ├── schemas/
 │   │   └── schemas.py                      # Schemas de entrada e saída da API
@@ -188,3 +188,19 @@ O turno só é salvo após o fluxo terminar. Falhas de persistência ou processa
 retornam 503 com uma mensagem pública, sem detalhes de credenciais.
 A execução do grafo tem timeout de 180 segundos. Os guardrails separados ainda
 não fazem parte deste fluxo; a avaliação final é realizada pelo juiz.
+
+### Encerramento de sessão
+
+`POST /chat/sessions/close` recebe `user_id` e `session_id` quando o usuário
+inicia um novo chat. O agente resume os até 40 turnos mais recentes da sessão
+com o modelo rápido e grava o resumo em `chat_summaries` (`user_id`,
+`session_id`, `resumo`, `turnos`, `criado_em`). A resposta é
+`{"session_id": "...", "status": "..."}`:
+
+- `resumida`: resumo novo salvo;
+- `ja_resumida`: a sessão já tinha resumo; nada é refeito nem sobrescrito;
+- `sem_turnos`: não havia conversa a resumir; nada é gravado.
+
+Os turnos são enviados ao modelo como dados, não como instruções. Falhas
+retornam 503 com mensagem pública. O resumo ainda não é usado como contexto de
+novas sessões. Esta rota, como `/chat`, não autentica o `user_id`.
