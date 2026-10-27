@@ -1,4 +1,4 @@
-"""Grafo do Kemi: orquestrador -> especialistas -> sintetizador -> juiz."""
+"""Grafo do Kemi: guardrail de entrada -> agentes -> guardrail de saída -> juiz."""
 import asyncio
 import json
 import logging
@@ -6,10 +6,12 @@ from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from app.agent.contracts import Evidence, SpecialistResult
+from app.agent.contracts import Evidence, SpecialistResult, SynthesisResult
 from app.agent.orchestrator import OrchestratorAgent
 from app.agent.synthesizer import SynthesizerAgent
 from app.agent.judge import JudgeAgent
+from app.agent.guardrails.input_guardrail import InputGuardrail, INPUT_SAFE_RESPONSE
+from app.agent.guardrails.output_guardrail import OutputGuardrail, OUTPUT_SAFE_RESPONSE
 from app.agent.specialists.bau.bau_agent import BauAgent
 from app.agent.specialists.quimico.quimico_agent import ChemicalAgent
 from app.agent.specialists.faq.faq_agent import FaqAgent
@@ -31,6 +33,7 @@ class ChatState(TypedDict, total=False):
     revisoes: int
     feedback: str
     resposta: str
+    entrada_permitida: bool
 
 
 def specialist_factory(name, user_id):
@@ -39,8 +42,20 @@ def specialist_factory(name, user_id):
     return {"quimico": ChemicalAgent, "faq": FaqAgent, "gps": GpsAgent}[name]()
 
 
-def build_graph(*, orchestrator=None, synthesizer=None, judge=None, factory=specialist_factory):
-    # Modelos são criados apenas durante uma requisição, nunca ao importar a API.
+def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
+                input_guardrail=None, output_guardrail=None, factory=specialist_factory):
+    async def check_input(state):
+        try:
+            decision = await (input_guardrail or InputGuardrail()).ainvoke(state["pergunta"])
+            allowed = decision.permitido
+        except Exception:
+            logger.exception("Falha no guardrail de entrada")
+            allowed = False
+        return {"entrada_permitida": allowed, **({} if allowed else {"resposta": INPUT_SAFE_RESPONSE})}
+
+    def route_input(state):
+        return "orquestrador" if state["entrada_permitida"] else "encerrar"
+
     async def orchestrate(state):
         plan = await (orchestrator or OrchestratorAgent()).ainvoke(state["pergunta"], state["contexto"])
         if plan.pergunta_original != state["pergunta"]:
@@ -91,6 +106,15 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None, factory=spec
             state["pergunta"], state["plano"], state["resultados"], state["feedback"])
         return {"candidata": answer}
 
+    async def check_output(state):
+        try:
+            answer = await (output_guardrail or OutputGuardrail()).ainvoke(
+                state["pergunta"], state["candidata"], state["resultados"], state["evidencias"])
+        except Exception:
+            logger.exception("Falha no guardrail de saída")
+            answer = SynthesisResult(resposta=OUTPUT_SAFE_RESPONSE)
+        return {"candidata": answer}
+
     async def evaluate(state):
         verdict = await (judge or JudgeAgent()).ainvoke(
             state["pergunta"], state["candidata"], state["resultados"], state["evidencias"])
@@ -114,14 +138,19 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None, factory=spec
         return {"resposta": text}
 
     graph = StateGraph(ChatState)
-    for name, node in [("orquestrador", orchestrate), ("especialistas", specialists),
-                       ("sintetizador", synthesize), ("juiz", evaluate), ("revisar", revise), ("finalizar", finish)]:
+    for name, node in [("guardrail_entrada", check_input), ("orquestrador", orchestrate),
+                       ("especialistas", specialists), ("sintetizador", synthesize),
+                       ("guardrail_saida", check_output), ("juiz", evaluate),
+                       ("revisar", revise), ("finalizar", finish)]:
         graph.add_node(name, node)
         
-    graph.add_edge(START, "orquestrador")
+    graph.add_edge(START, "guardrail_entrada")
+    graph.add_conditional_edges("guardrail_entrada", route_input,
+                                {"orquestrador": "orquestrador", "encerrar": END})
     graph.add_edge("orquestrador", "especialistas")
     graph.add_edge("especialistas", "sintetizador")
-    graph.add_edge("sintetizador", "juiz")
+    graph.add_edge("sintetizador", "guardrail_saida")
+    graph.add_edge("guardrail_saida", "juiz")
     graph.add_conditional_edges("juiz", decide, {"revisar": "revisar", "finalizar": "finalizar"})
     graph.add_edge("revisar", "sintetizador")
     graph.add_edge("finalizar", END)
