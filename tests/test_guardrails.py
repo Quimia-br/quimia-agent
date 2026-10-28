@@ -1,9 +1,10 @@
 import asyncio
 from uuid import uuid4
 
+import pytest
 from langchain_core.runnables import RunnableLambda
 
-from app.agent.contracts import JudgeResult, OrchestratorResult, SynthesisResult
+from app.agent.contracts import FaqResult, JudgeResult, OrchestratorResult, RoutePlan, SynthesisResult
 from app.agent.guardrails.input_guardrail import InputDecision, InputGuardrail, INPUT_SAFE_RESPONSE
 from app.agent.guardrails.output_guardrail import OutputGuardrail, OUTPUT_SAFE_RESPONSE
 from app.agent.workflow import build_graph
@@ -27,11 +28,18 @@ def test_input_guardrail_classifies_semantically():
     assert result.categoria == "prompt_injection"
 
 
-def test_output_guardrail_returns_structured_revision():
-    guardrail = OutputGuardrail(model=FakeModel({"resposta": "Não misture os produtos."}))
+def test_output_guardrail_preserves_safe_response():
+    guardrail = OutputGuardrail(model=FakeModel({"segura": True, "motivo": "Sem risco"}))
+    result = asyncio.run(guardrail.ainvoke(
+        "Como descartar?", SynthesisResult(resposta="Consulte o rótulo."), [], []))
+    assert result.resposta == "Consulte o rótulo."
+
+
+def test_output_guardrail_replaces_unsafe_response():
+    guardrail = OutputGuardrail(model=FakeModel({"segura": False, "motivo": "Instrução perigosa"}))
     result = asyncio.run(guardrail.ainvoke(
         "Posso misturar?", SynthesisResult(resposta="Misture sem risco."), [], []))
-    assert result.resposta == "Não misture os produtos."
+    assert result.resposta == OUTPUT_SAFE_RESPONSE
 
 
 def test_rejected_input_skips_all_other_agents():
@@ -48,32 +56,49 @@ def test_rejected_input_skips_all_other_agents():
     assert result["resposta"] == INPUT_SAFE_RESPONSE
 
 
-def test_output_review_reaches_judge_before_delivery():
+def test_input_model_failure_is_not_reported_as_dangerous_request():
+    class Broken:
+        async def ainvoke(self, question):
+            raise RuntimeError("Falha do provedor")
+
+    with pytest.raises(RuntimeError, match="Falha do provedor"):
+        asyncio.run(build_graph(input_guardrail=Broken()).ainvoke(
+            {"pergunta": "Qual é o objetivo do Quimia?", "user_id": str(uuid4()),
+             "contexto": ""}))
+
+
+def test_judge_checks_specialist_before_output_guardrail():
     events = []
     class Allowed:
         async def ainvoke(self, question):
             return InputDecision(categoria="permitido", motivo="Permitido")
     class Orchestrator:
         async def ainvoke(self, question, context):
-            return OrchestratorResult(status="fora_escopo", pergunta_original=question)
+            return OrchestratorResult(status="roteado", pergunta_original=question,
+                                      rotas=[RoutePlan(id="r1", agente="faq", objetivo="Consultar")])
+    class Faq:
+        async def ainvoke_with_evidence(self, question, goal):
+            return FaqResult(intencao="consultar", resposta="Texto original"), []
     class Synthesizer:
-        async def ainvoke(self, *args):
-            return SynthesisResult(resposta="Texto original")
+        async def ainvoke(self, reviewed):
+            events.append("sintetizador")
+            return reviewed
     class Output:
         async def ainvoke(self, question, candidate, specialists, evidence):
             events.append("saida")
-            return SynthesisResult(resposta="Texto revisado")
+            return candidate
     class Judge:
         async def ainvoke(self, question, candidate, specialists, evidence):
             events.append("juiz")
-            assert candidate.resposta == "Texto revisado"
+            assert candidate.resposta == "Texto original"
             return JudgeResult(veredito="aprovado", confianca=1, justificativa="OK")
     result = asyncio.run(build_graph(
         input_guardrail=Allowed(), orchestrator=Orchestrator(),
         synthesizer=Synthesizer(), output_guardrail=Output(), judge=Judge(),
+        factory=lambda name, user_id: Faq(),
     ).ainvoke({"pergunta": "Pergunta", "user_id": str(uuid4()), "contexto": ""}))
-    assert events == ["saida", "juiz"]
-    assert result["resposta"] == "Texto revisado"
+    assert events == ["juiz", "saida", "sintetizador"]
+    assert result["resposta"] == "Texto original"
 
 
 def test_output_failure_uses_generic_message():
@@ -85,14 +110,14 @@ def test_output_failure_uses_generic_message():
             return InputDecision(categoria="permitido", motivo="Permitido")
     class Orchestrator:
         async def ainvoke(self, question, context):
-            return OrchestratorResult(status="fora_escopo", pergunta_original=question)
+            return OrchestratorResult(status="fora_escopo", pergunta_original=question,
+                                      resposta="Resposta do orquestrador")
     class Synthesizer:
-        async def ainvoke(self, *args):
-            return SynthesisResult(resposta="Não enviar")
+        async def ainvoke(self, reviewed):
+            return reviewed
     class Judge:
         async def ainvoke(self, question, candidate, specialists, evidence):
-            assert candidate.resposta == OUTPUT_SAFE_RESPONSE
-            return JudgeResult(veredito="aprovado", confianca=1, justificativa="OK")
+            raise AssertionError("Juiz não avalia resposta direta do orquestrador")
     result = asyncio.run(build_graph(
         input_guardrail=Allowed(), orchestrator=Orchestrator(),
         synthesizer=Synthesizer(), output_guardrail=Broken(), judge=Judge(),

@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from app.agent.contracts import OrchestratorResult, RoutePlan, JudgeResult, SynthesisResult, SpecialistResult, Evidence
-from app.agent.workflow import build_graph, SAFE_RESPONSE
+from app.agent.workflow import build_graph, SAFE_RESPONSE, ChatRunResult
 from app.agent.guardrails.input_guardrail import InputDecision
 import app.main as main
 import app.routes.chat_routes as routes
@@ -23,7 +23,7 @@ class PassthroughOutput:
         return answer
 
 
-def test_graph_dependencies_evidence_and_revision():
+def test_graph_dependencies_and_judgment_before_delivery():
     events = []
     class Orchestrator:
         async def ainvoke(self, question, context):
@@ -39,42 +39,126 @@ def test_graph_dependencies_evidence_and_revision():
             return SpecialistResult(dominio=self.name, intencao="consultar", resposta="Produto identificado"), [
                 Evidence(source_id=self.name, title="Tool", content="Evidência confirmada")]
     class Synthesizer:
-        async def ainvoke(self, question, plan, results, feedback):
+        async def ainvoke(self, reviewed):
             events.append("sintetizador")
-            return SynthesisResult(resposta="Resposta revisada" if feedback != "Não fornecido." else "Candidata")
+            return reviewed
+    class Output:
+        async def ainvoke(self, question, candidate, results, evidence):
+            events.append("guardrail_saida")
+            return candidate
     class Judge:
-        count = 0
         async def ainvoke(self, question, answer, results, evidence):
             events.append("juiz")
-            assert len(evidence) == 2
-            self.count += 1
-            return JudgeResult(veredito="revisar" if self.count == 1 else "aprovado", confianca=1,
-                               justificativa="Avaliação", correcoes_necessarias=["Corrigir"] if self.count == 1 else [])
+            assert len(evidence) == 1
+            assert len(results) == 1
+            return JudgeResult(veredito="aprovado", confianca=1, justificativa="Avaliação")
     graph = build_graph(orchestrator=Orchestrator(), synthesizer=Synthesizer(), judge=Judge(),
-                        input_guardrail=AllowedInput(), output_guardrail=PassthroughOutput(),
+                        input_guardrail=AllowedInput(), output_guardrail=Output(),
                         factory=lambda name, owner: Specialist(name))
     result = asyncio.run(graph.ainvoke({"pergunta": "Pergunta", "user_id": str(uuid4()), "contexto": "Histórico"}))
-    assert events == ["orquestrador", "bau", "quimico", "sintetizador", "juiz", "sintetizador", "juiz"]
-    assert result["resposta"] == "Resposta revisada"
+    assert events == ["orquestrador", "bau", "quimico", "juiz", "juiz", "guardrail_saida", "sintetizador"]
+    assert result["resposta"] == "Produto identificado\n\nProduto identificado"
+    assert result["agentes_acionados"] == [
+        "guardrail_entrada", "orquestrador", "bau", "quimico", "juiz", "juiz",
+        "guardrail_saida", "sintetizador",
+    ]
+
+
+def test_greeting_is_answered_by_orchestrator_and_delivered():
+    class Orchestrator:
+        async def ainvoke(self, question, context):
+            return OrchestratorResult(status="saudacao", pergunta_original=question,
+                                      resposta="Olá! Como posso ajudar?")
+
+    class Synthesizer:
+        async def ainvoke(self, reviewed):
+            return reviewed
+
+    class Judge:
+        async def ainvoke(self, *args):
+            raise AssertionError("Saudação não deve passar pelo juiz de especialistas")
+
+    result = asyncio.run(build_graph(
+        input_guardrail=AllowedInput(), orchestrator=Orchestrator(),
+        synthesizer=Synthesizer(), output_guardrail=PassthroughOutput(),
+        judge=Judge(),
+    ).ainvoke({"pergunta": "oi", "user_id": str(uuid4()), "contexto": ""}))
+    assert result["resposta"] == "Olá! Como posso ajudar?"
+    assert result["agentes_acionados"] == [
+        "guardrail_entrada", "orquestrador", "guardrail_saida", "sintetizador"]
+
+
+def test_quimia_purpose_question_is_routed_by_orchestrator_and_calls_faq():
+    events = []
+
+    class Allowed:
+        async def ainvoke(self, _):
+            events.append("guardrail_entrada")
+            return InputDecision(categoria="permitido", motivo="Dúvida sobre o aplicativo")
+
+    class Orchestrator:
+        async def ainvoke(self, question, context):
+            events.append("orquestrador")
+            return OrchestratorResult(
+                status="roteado", pergunta_original=question,
+                rotas=[RoutePlan(id="r1", agente="faq",
+                                 objetivo="Consultar no FAQ a finalidade do Quimia.")],
+            )
+
+    class Faq:
+        async def ainvoke_with_evidence(self, question, goal):
+            events.append("faq")
+            assert question == "qual é o objetivo do quimia"
+            assert "finalidade" in goal
+            return SpecialistResult(dominio="faq", intencao="consultar",
+                                    resposta="O Quimia orienta sobre produtos e descarte."), []
+
+    class Synthesizer:
+        async def ainvoke(self, reviewed):
+            events.append("sintetizador")
+            return reviewed
+
+    class Judge:
+        async def ainvoke(self, *args):
+            events.append("juiz")
+            return JudgeResult(veredito="aprovado", confianca=1, justificativa="OK")
+
+    result = asyncio.run(build_graph(
+        input_guardrail=Allowed(), orchestrator=Orchestrator(),
+        synthesizer=Synthesizer(), output_guardrail=PassthroughOutput(),
+        judge=Judge(), factory=lambda name, user_id: Faq(),
+    ).ainvoke({"pergunta": "qual é o objetivo do quimia", "user_id": str(uuid4()),
+               "contexto": "Não fornecido."}))
+    assert result["resposta"] == "O Quimia orienta sobre produtos e descarte."
+    assert events == ["guardrail_entrada", "orquestrador", "faq", "juiz", "sintetizador"]
+    assert result["agentes_acionados"] == [
+        "guardrail_entrada", "orquestrador", "faq", "juiz", "guardrail_saida", "sintetizador"]
 
 
 @pytest.mark.parametrize("verdict", ["bloqueado", "revisar"])
 def test_unapproved_candidate_is_never_delivered(verdict):
     class Orchestrator:
         async def ainvoke(self, question, context):
-            return OrchestratorResult(status="fora_escopo", pergunta_original=question)
+            return OrchestratorResult(status="roteado", pergunta_original=question,
+                                      rotas=[RoutePlan(id="r1", agente="faq", objetivo="Consultar")])
+    class Faq:
+        async def ainvoke_with_evidence(self, question, goal):
+            return SpecialistResult(dominio="faq", intencao="consultar",
+                                    resposta="Texto que não deve sair"), []
     class Synthesizer:
-        async def ainvoke(self, *args): return SynthesisResult(resposta="Texto que não deve sair")
+        async def ainvoke(self, reviewed): return reviewed
     class Judge:
         async def ainvoke(self, *args):
             return JudgeResult(veredito=verdict, confianca=1, justificativa="Problema",
                                riscos_seguranca=["Risco"] if verdict == "bloqueado" else [],
                                correcoes_necessarias=["Corrigir"] if verdict == "revisar" else [])
     result = asyncio.run(build_graph(orchestrator=Orchestrator(), synthesizer=Synthesizer(), judge=Judge(),
-                                    input_guardrail=AllowedInput(), output_guardrail=PassthroughOutput()).ainvoke(
+                                    input_guardrail=AllowedInput(), output_guardrail=PassthroughOutput(),
+                                    factory=lambda name, user_id: Faq()).ainvoke(
         {"pergunta": "Pergunta", "user_id": str(uuid4()), "contexto": ""}))
     assert result["resposta"] == SAFE_RESPONSE
-    assert result["revisoes"] <= 1
+    assert result["agentes_acionados"] == [
+        "guardrail_entrada", "orquestrador", "faq", "juiz", "guardrail_saida", "sintetizador"]
 
 
 def test_chat_swagger_validation_and_response_with_history(monkeypatch):
@@ -87,7 +171,7 @@ def test_chat_swagger_validation_and_response_with_history(monkeypatch):
     async def run(question, user, context):
         assert question == "Pergunta"
         assert context == "Turno anterior"
-        return "Resposta aprovada"
+        return ChatRunResult("Resposta aprovada", ["guardrail_entrada", "orquestrador", "juiz"])
     monkeypatch.setattr(routes, "run_chat", run)
     owner = str(uuid4())
     payload = {"user_id": owner, "session_id": "session-1", "pergunta": "Pergunta"}
@@ -98,7 +182,8 @@ def test_chat_swagger_validation_and_response_with_history(monkeypatch):
         assert client.post("/chat", json={**payload, "pergunta": " "}).status_code == 422
         response = client.post("/chat", json=payload)
     assert response.status_code == 200
-    assert response.json() == {"resposta": "Resposta aprovada"}
+    assert response.json() == {"resposta": "Resposta aprovada", "agentes_acionados": [
+        "guardrail_entrada", "orquestrador", "juiz"]}
     assert calls == [(owner, "session-1", "Pergunta", "Resposta aprovada")]
 
 
@@ -172,7 +257,7 @@ def test_chat_route_passes_same_session_history_to_graph_and_saves_reply(monkeyp
         return "Contexto da sessão"
     async def run(question, user, context):
         events.append(("run", question, user, context))
-        return "Resposta"
+        return ChatRunResult("Resposta", ["guardrail_entrada", "orquestrador"])
     def save(user, session, question, answer):
         events.append(("save", user, session, question, answer))
     monkeypatch.setattr(routes, "load_chat_context", load)
@@ -180,6 +265,7 @@ def test_chat_route_passes_same_session_history_to_graph_and_saves_reply(monkeyp
     monkeypatch.setattr(routes, "save_turn", save)
     response = asyncio.run(routes.conversar(ChatRequest(user_id=owner, session_id="s1", pergunta="E ele?")))
     assert response.resposta == "Resposta"
+    assert response.agentes_acionados == ["guardrail_entrada", "orquestrador"]
     assert events == [
         ("load", str(owner), "s1"),
         ("run", "E ele?", str(owner), "Contexto da sessão"),

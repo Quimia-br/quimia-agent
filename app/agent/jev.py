@@ -45,7 +45,8 @@ QUESTIONS = {
             "Classifique o apoio factual de `resposta` usando somente `evidencias` e os fatos "
             "relatados pelo usuário em `pergunta`. `respostas_especialistas` não são fonte "
             "independente. Uma resposta que apenas pede esclarecimento, relata indisponibilidade "
-            "ou evita orientação insegura pode ser apoiada sem evidência técnica."
+            "ou evita orientação insegura pode ser apoiada sem evidência técnica. "
+            "Uma saudação sem alegações verificáveis também pode ser apoiada."
         ),
         "criteria": {
             "apoiada": "Todas as alegações verificáveis têm apoio direto ou a resposta só se abstém.",
@@ -59,7 +60,8 @@ QUESTIONS = {
             "Todas as alegações verificáveis em `resposta` são diretamente sustentadas por "
             "`evidencias` ou apenas repetem fatos relatados em `pergunta`, sem transformar "
             "a fala do usuário em fato externo? Pedir esclarecimento, relatar indisponibilidade "
-            "ou evitar orientação insegura conta como sim. Não use `respostas_especialistas` "
+            "ou evitar orientação insegura conta como sim. Uma saudação sem alegações "
+            "verificáveis também conta como sim. Não use `respostas_especialistas` "
             "como prova independente."
         ),
     },

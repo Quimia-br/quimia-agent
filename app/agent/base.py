@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+import json
 from typing import Any, Generic, TypeVar
 
 from langchain_core.messages import SystemMessage
@@ -21,7 +22,11 @@ class StructuredAgent(Generic[SchemaT]):
     ) -> None:
         prompt = ChatPromptTemplate.from_messages(
             [
-                SystemMessage(content=system_prompt),
+                SystemMessage(content=(
+                    f"{system_prompt}\n\n"
+                    "Responda somente com um objeto JSON válido que siga este esquema: "
+                    f"{json.dumps(output_schema.model_json_schema(), ensure_ascii=False)}"
+                )),
                 ("human", human_template),
             ]
         )
