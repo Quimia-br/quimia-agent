@@ -10,10 +10,9 @@ pymongo
 langchain
 langgraph
 langchain-google-genai
-langchain-groq
+langchain-openai
 langchain-text-splitters
 google-generativeai
-groq
 
 # FAQ com RAG
 pypdf

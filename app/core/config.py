@@ -14,7 +14,7 @@ FAQ_PDF_PATH = (
 )
 DEFAULT_CORS_ORIGINS = "http://localhost:3000,http://localhost:8081"
 OBRIGATORIAS = (
-    "GROQ_API_KEY",
+    "COMMANDCODE_API_KEY",
     "GEMINI_API_KEY",
     "DATABASE_URL",
     "MONGODB_URI",
@@ -24,17 +24,17 @@ OBRIGATORIAS = (
 
 class AppConfig(BaseModel):
     gemini_api_key: str | None
-    groq_api_key: str | None
+    commandcode_api_key: str | None
+    commandcode_base_url: str
     database_url: str | None
     mongodb_uri: str | None
     qdrant_url: str | None
     qdrant_api_key: str | None
     cors_origins: tuple[str, ...]
-    groq_fast_model: str
-    groq_specialist_model: str
-    gemini_specialist_model: str
-    groq_timeout_seconds: float
-    groq_max_retries: int
+    commandcode_fast_model: str
+    commandcode_specialist_model: str
+    commandcode_timeout_seconds: float
+    commandcode_max_retries: int
     gemini_embedding_model: str
     embedding_dimension: int
     faq_collection: str
@@ -50,7 +50,10 @@ def carregar_config() -> AppConfig:
     """Carrega e valida a configuração atual do ambiente."""
     return AppConfig(
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
-        groq_api_key=os.getenv("GROQ_API_KEY"),
+        commandcode_api_key=os.getenv("COMMANDCODE_API_KEY"),
+        commandcode_base_url=os.getenv(
+            "COMMANDCODE_BASE_URL", "https://api.commandcode.ai/provider/v1"
+        ),
         database_url=os.getenv("DATABASE_URL"),
         mongodb_uri=os.getenv("MONGODB_URI"),
         qdrant_url=os.getenv("QDRANT_URL"),
@@ -58,15 +61,12 @@ def carregar_config() -> AppConfig:
         cors_origins=_parse_cors_origins(
             os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS)
         ),
-        groq_fast_model=os.getenv("GROQ_FAST_MODEL", "qwen/qwen3.6-27b"),
-        groq_specialist_model=os.getenv(
-            "GROQ_SPECIALIST_MODEL", "openai/gpt-oss-120b"
+        commandcode_fast_model=os.getenv("COMMANDCODE_FAST_MODEL", "Qwen/Qwen3.8-Flash"),
+        commandcode_specialist_model=os.getenv(
+            "COMMANDCODE_SPECIALIST_MODEL", "Qwen/Qwen3.8-27B"
         ),
-        gemini_specialist_model=os.getenv(
-            "GEMINI_SPECIALIST_MODEL", "gemini-3.6-flash"
-        ),
-        groq_timeout_seconds=os.getenv("GROQ_TIMEOUT_SECONDS", "30"),
-        groq_max_retries=os.getenv("GROQ_MAX_RETRIES", "2"),
+        commandcode_timeout_seconds=os.getenv("COMMANDCODE_TIMEOUT_SECONDS", "30"),
+        commandcode_max_retries=os.getenv("COMMANDCODE_MAX_RETRIES", "2"),
         gemini_embedding_model=os.getenv(
             "GEMINI_EMBEDDING_MODEL", "gemini-embedding-2"
         ),
@@ -80,20 +80,20 @@ def carregar_config() -> AppConfig:
 CONFIG = carregar_config()
 
 GEMINI_API_KEY = CONFIG.gemini_api_key
-GROQ_API_KEY = CONFIG.groq_api_key
+COMMANDCODE_API_KEY = CONFIG.commandcode_api_key
 DATABASE_URL = CONFIG.database_url
 MONGODB_URI = CONFIG.mongodb_uri
 QDRANT_URL = CONFIG.qdrant_url
 QDRANT_API_KEY = CONFIG.qdrant_api_key
 CORS_ORIGINS = CONFIG.cors_origins
-GROQ_FAST_MODEL = CONFIG.groq_fast_model
-GROQ_SPECIALIST_MODEL = CONFIG.groq_specialist_model
+COMMANDCODE_FAST_MODEL = CONFIG.commandcode_fast_model
+COMMANDCODE_SPECIALIST_MODEL = CONFIG.commandcode_specialist_model
 
 def validar_config() -> list[str]:
     """Devolve a lista de problemas de configuração (vazia = tudo certo)."""
     config = carregar_config()
     valores = {
-        "GROQ_API_KEY": config.groq_api_key,
+        "COMMANDCODE_API_KEY": config.commandcode_api_key,
         "GEMINI_API_KEY": config.gemini_api_key,
         "DATABASE_URL": config.database_url,
         "MONGODB_URI": config.mongodb_uri,

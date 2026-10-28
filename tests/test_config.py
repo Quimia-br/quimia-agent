@@ -26,3 +26,11 @@ def test_validar_config_cors(monkeypatch):
     assert config.validar_config() == [
         'CORS_ORIGINS não pode conter "*" quando credenciais estão habilitadas.'
     ]
+
+
+def test_commandcode_defaults_match_provider_model_ids(monkeypatch):
+    monkeypatch.delenv("COMMANDCODE_FAST_MODEL", raising=False)
+    monkeypatch.delenv("COMMANDCODE_SPECIALIST_MODEL", raising=False)
+    settings = config.carregar_config()
+    assert settings.commandcode_fast_model == "Qwen/Qwen3.8-Flash"
+    assert settings.commandcode_specialist_model == "Qwen/Qwen3.8-27B"
