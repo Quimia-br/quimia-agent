@@ -11,7 +11,7 @@ class FakeChatModel:
         self.kwargs = kwargs
         self.instances.append(self)
 
-    def with_structured_output(self, _schema):
+    def with_structured_output(self, _schema, method="function_calling"):
         return RunnableLambda(lambda payload: payload)
 
 
@@ -26,38 +26,36 @@ def test_llms_selects_model_by_profile(
     monkeypatch, profile, expected_model
 ):
     FakeChatModel.instances.clear()
-    monkeypatch.setenv("GROQ_API_KEY", "test-key")
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.setenv("GROQ_FAST_MODEL", "fast-model")
-    monkeypatch.setenv("GROQ_SPECIALIST_MODEL", "specialist-model")
-    monkeypatch.setattr(llms, "ChatGroq", FakeChatModel)
+    monkeypatch.setenv("COMMANDCODE_API_KEY", "test-key")
+    monkeypatch.setenv("COMMANDCODE_FAST_MODEL", "fast-model")
+    monkeypatch.setenv("COMMANDCODE_SPECIALIST_MODEL", "specialist-model")
+    monkeypatch.setattr(llms, "ChatOpenAI", FakeChatModel)
 
     llms.create_chat_model(profile)
 
     assert FakeChatModel.instances[0].kwargs["model"] == expected_model
     assert FakeChatModel.instances[0].kwargs["temperature"] == 0
+    assert FakeChatModel.instances[0].kwargs["api_key"] == "test-key"
+    assert FakeChatModel.instances[0].kwargs["base_url"] == "https://api.commandcode.ai/provider/v1"
 
 
-def test_specialist_profile_enables_gemini_fallback(monkeypatch):
+def test_specialist_profile_uses_only_commandcode(monkeypatch):
     FakeChatModel.instances.clear()
-    monkeypatch.setenv("GROQ_API_KEY", "groq-key")
+    monkeypatch.setenv("COMMANDCODE_API_KEY", "commandcode-key")
     monkeypatch.setenv("GEMINI_API_KEY", "gemini-key")
-    monkeypatch.setenv("GEMINI_SPECIALIST_MODEL", "gemini-fallback")
-    monkeypatch.setattr(llms, "ChatGroq", FakeChatModel)
-    monkeypatch.setattr(llms, "ChatGoogleGenerativeAI", FakeChatModel)
+    monkeypatch.setattr(llms, "ChatOpenAI", FakeChatModel)
 
     llms.create_chat_model(llms.ModelProfile.SPECIALIST)
 
-    assert len(FakeChatModel.instances) == 2
-    assert FakeChatModel.instances[1].kwargs["model"] == "gemini-fallback"
+    assert len(FakeChatModel.instances) == 1
+    assert FakeChatModel.instances[0].kwargs["api_key"] == "commandcode-key"
 
 
 def test_fast_profile_does_not_create_gemini_fallback(monkeypatch):
     FakeChatModel.instances.clear()
-    monkeypatch.setenv("GROQ_API_KEY", "groq-key")
+    monkeypatch.setenv("COMMANDCODE_API_KEY", "commandcode-key")
     monkeypatch.setenv("GEMINI_API_KEY", "gemini-key")
-    monkeypatch.setattr(llms, "ChatGroq", FakeChatModel)
-    monkeypatch.setattr(llms, "ChatGoogleGenerativeAI", FakeChatModel)
+    monkeypatch.setattr(llms, "ChatOpenAI", FakeChatModel)
 
     llms.create_chat_model(llms.ModelProfile.FAST)
 
@@ -66,14 +64,14 @@ def test_fast_profile_does_not_create_gemini_fallback(monkeypatch):
 
 def test_structured_model_uses_fallback_after_primary_failure():
     class FailingModel:
-        def with_structured_output(self, _schema):
+        def with_structured_output(self, _schema, method="function_calling"):
             def fail(_payload):
                 raise RuntimeError("primary unavailable")
 
             return RunnableLambda(fail)
 
     class WorkingModel:
-        def with_structured_output(self, _schema):
+        def with_structured_output(self, _schema, method="function_calling"):
             return RunnableLambda(lambda _payload: {"provider": "fallback"})
 
     model = llms.ChatModelWithFallback(FailingModel(), WorkingModel())
@@ -84,7 +82,7 @@ def test_structured_model_uses_fallback_after_primary_failure():
 
 
 def test_llms_requires_api_key(monkeypatch):
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("COMMANDCODE_API_KEY", raising=False)
 
     with pytest.raises(llms.ModelConfigurationError):
         llms.create_chat_model(llms.ModelProfile.FAST)

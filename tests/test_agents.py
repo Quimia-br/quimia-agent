@@ -5,6 +5,7 @@ from langchain_core.runnables import RunnableLambda
 from pydantic import ValidationError
 
 import app.agent.judge as judge_module
+from app.agent.jev import JevAnswers
 from app.agent.contracts import (
     QuimicoResult,
     Evidence,
@@ -36,19 +37,10 @@ class FakeChatModel:
         return RunnableLambda(lambda _: AIMessage(content="", tool_calls=[]))
 
 
-def test_judge_uses_specialist_model_profile(monkeypatch):
-    selected_profiles = []
-    model = FakeChatModel({})
-
-    def create_model(profile):
-        selected_profiles.append(profile)
-        return model
-
-    monkeypatch.setattr(judge_module, "create_chat_model", create_model)
-
-    JudgeAgent()
-
-    assert selected_profiles == [judge_module.ModelProfile.SPECIALIST]
+def test_judge_uses_jev_client(monkeypatch):
+    client = object()
+    monkeypatch.setattr(judge_module, "JevClient", lambda: client)
+    assert JudgeAgent()._client is client
 
 
 def test_orchestrator_uses_structured_contract():
@@ -139,16 +131,18 @@ def test_synthesizer_consolidates_structured_inputs():
 
 
 def test_judge_evaluates_answer_and_evidence():
-    model = FakeChatModel(
-        {
-            "veredito": "aprovado",
-            "confianca": 0.95,
-            "justificativa": "A resposta está sustentada pela evidência.",
-            "alegacoes_nao_sustentadas": [],
-            "riscos_seguranca": [],
-            "correcoes_necessarias": [],
-        }
-    )
+    class Client:
+        def decide(self, state):
+            assert state["pergunta"] == "Como usar?"
+            assert state["resposta"] == "Use conforme o rótulo."
+            assert state["evidencias"][0]["source_id"] == "fds-1"
+            return JevAnswers.model_validate({
+                "apoio": {"type": "choice", "choice": "apoiada", "confidence": 0.95},
+                "apoio_total": {"type": "noul", "noul": 0.95},
+                "risco_quimico": {"type": "noul", "noul": 0.01},
+                "vazamento": {"type": "noul", "noul": 0.01},
+                "proximidade": {"type": "noul", "noul": 0.01},
+            })
     answer = SynthesisResult(resposta="Use conforme o rótulo.")
     specialist = QuimicoResult(
         intencao="consultar", resposta="O rótulo orienta esse uso."
@@ -160,7 +154,7 @@ def test_judge_evaluates_answer_and_evidence():
         page=2,
     )
 
-    result = JudgeAgent(model=model).invoke(
+    result = JudgeAgent(client=Client()).invoke(
         "Como usar?", answer, [specialist], [evidence]
     )
 

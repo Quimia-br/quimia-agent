@@ -102,11 +102,13 @@ Como a API aceita credenciais, o curinga `*` não é permitido.
 
 ### Modelos dos agentes
 
-Os agentes usam `ChatGroq` por meio do LangChain e retornam contratos Pydantic.
-Por padrão, Orquestrador e Sintetizador usam `qwen/qwen3.6-27b`, enquanto os
-especialistas e o Juiz usam `openai/gpt-oss-120b`. Os modelos podem ser
-alterados pelas variáveis `GROQ_FAST_MODEL`, `GROQ_SPECIALIST_MODEL`. Os agentes especialistas tem um fallback para o modelo do
-`Gemini` o `gemini-3.6-flash`
+Os agentes de chat usam a Provider API da CommandCode com `COMMANDCODE_API_KEY`
+e retornam contratos Pydantic. Por padrão, os agentes rápidos usam
+`Qwen/Qwen3.8-Flash` e os especialistas usam `Qwen/Qwen3.8-27B`. Configure
+`COMMANDCODE_FAST_MODEL` e `COMMANDCODE_SPECIALIST_MODEL` para trocar esses modelos.
+O juiz usa `typesafe/jev-1.14.0` no endpoint `/systemone`, com a mesma chave.
+O FAQ ainda usa `GEMINI_API_KEY` para embeddings, pois a Provider API documentada
+não oferece um endpoint de embeddings.
 
 
 ## Verificações
@@ -163,7 +165,8 @@ POST /chat -> Try it out. Exemplo de corpo:
 ```
 
 O fluxo implementado em `app/agent/workflow.py` usa LangGraph:
-orquestrador -> especialistas -> sintetizador -> juiz.
+guardrail de entrada -> orquestrador -> especialistas -> sintetizador ->
+guardrail de saída -> juiz Jev.
 Rotas independentes executam em paralelo; rotas dependentes recebem os resultados
 anteriores. Quando uma dependência exige esclarecimento, sua consulta dependente
 não é executada. Pedidos fora de escopo ou ambíguos seguem para sintetizador e
@@ -186,8 +189,8 @@ identidade; a integração com o aplicativo precisa validar o usuário antes de
 expor o histórico em produção.
 O turno só é salvo após o fluxo terminar. Falhas de persistência ou processamento
 retornam 503 com uma mensagem pública, sem detalhes de credenciais.
-A execução do grafo tem timeout de 180 segundos. Os guardrails separados ainda
-não fazem parte deste fluxo; a avaliação final é realizada pelo juiz.
+A execução do grafo tem timeout de 180 segundos. Os guardrails de entrada e saída
+fazem parte do fluxo; a avaliação final é realizada pelo juiz Jev.
 
 ### Encerramento de sessão
 

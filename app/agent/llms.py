@@ -1,8 +1,7 @@
 from enum import StrEnum
 from typing import Any
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 
 from app.core.config import carregar_config
 
@@ -24,11 +23,11 @@ class ChatModelWithFallback:
         self._fallback = fallback
 
     def with_structured_output(self, schema: Any) -> Any:
-        primary = self._primary.with_structured_output(schema)
+        primary = self._primary.with_structured_output(schema, method="function_calling")
         if self._fallback is None:
             return primary
 
-        fallback = self._fallback.with_structured_output(schema)
+        fallback = self._fallback.with_structured_output(schema, method="function_calling")
         return primary.with_fallbacks([fallback])
 
     def bind_tools(self, tools: list) -> Any:
@@ -39,32 +38,22 @@ class ChatModelWithFallback:
 
 
 def create_chat_model(profile: ModelProfile) -> ChatModelWithFallback:
-    """Cria o modelo do perfil e habilita o fallback dos agentes especialistas."""
+    """Cria um modelo de chat da Provider API com a chave compartilhada."""
     config = carregar_config()
-    if not config.groq_api_key:
-        raise ModelConfigurationError("GROQ_API_KEY não está configurada.")
+    if not config.commandcode_api_key:
+        raise ModelConfigurationError("COMMANDCODE_API_KEY não está configurada.")
 
     models = {
-        ModelProfile.FAST: config.groq_fast_model,
-        ModelProfile.SPECIALIST: config.groq_specialist_model,
+        ModelProfile.FAST: config.commandcode_fast_model,
+        ModelProfile.SPECIALIST: config.commandcode_specialist_model,
     }
 
-    primary = ChatGroq(
-        api_key=config.groq_api_key,
+    primary = ChatOpenAI(
+        api_key=config.commandcode_api_key,
+        base_url=config.commandcode_base_url,
         model=models[profile],
         temperature=0,
-        timeout=config.groq_timeout_seconds,
-        max_retries=config.groq_max_retries,
+        timeout=config.commandcode_timeout_seconds,
+        max_retries=config.commandcode_max_retries,
     )
-
-    fallback = None
-    if profile is ModelProfile.SPECIALIST and config.gemini_api_key:
-        fallback = ChatGoogleGenerativeAI(
-            api_key=config.gemini_api_key,
-            model=config.gemini_specialist_model,
-            temperature=0,
-            request_timeout=config.groq_timeout_seconds,
-            retries=config.groq_max_retries,
-        )
-
-    return ChatModelWithFallback(primary, fallback)
+    return ChatModelWithFallback(primary)
