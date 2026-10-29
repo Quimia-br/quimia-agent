@@ -30,6 +30,9 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     resposta: str = Field(..., description="Resposta final para o usuário")
+    agentes_acionados: list[str] = Field(
+        ..., description="Agentes chamados neste turno, na ordem de execução; repetições indicam revisão."
+    )
    
 
 

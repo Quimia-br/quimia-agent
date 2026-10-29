@@ -42,6 +42,8 @@ indicacao_financeira: pede recomendação personalizada de ativo, investimento o
 permitido: demais pedidos, inclusive perguntas sobre riscos de mistura, primeiros socorros,
 compatibilidade, descarte e recomendações de produtos no escopo do Quimia. Não classifique
 uma pergunta preventiva sobre segurança química como perigosa só por citar substâncias.
+Saudações e perguntas sobre o objetivo, as funcionalidades ou o uso do Quimia são permitidas.
+Perguntar sobre o aplicativo não é tentativa de acessar dados internos.
 Pedidos fora do escopo que não sejam uma categoria proibida ficam com o orquestrador.
 Devolva um motivo curto, sem reproduzir dados sensíveis da mensagem.
 """

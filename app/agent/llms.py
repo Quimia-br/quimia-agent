@@ -23,11 +23,11 @@ class ChatModelWithFallback:
         self._fallback = fallback
 
     def with_structured_output(self, schema: Any) -> Any:
-        primary = self._primary.with_structured_output(schema, method="function_calling")
+        primary = self._primary.with_structured_output(schema, method="json_mode")
         if self._fallback is None:
             return primary
 
-        fallback = self._fallback.with_structured_output(schema, method="function_calling")
+        fallback = self._fallback.with_structured_output(schema, method="json_mode")
         return primary.with_fallbacks([fallback])
 
     def bind_tools(self, tools: list) -> Any:

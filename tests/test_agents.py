@@ -110,24 +110,9 @@ def test_specialists_return_validated_results(agent_class, domain):
     assert result.dominio == domain
 
 
-def test_synthesizer_consolidates_structured_inputs():
-    model = FakeChatModel({"resposta": "Resposta consolidada."})
-    plan = OrchestratorResult(
-        status="roteado",
-        pergunta_original="Pergunta",
-        rotas=[
-            RoutePlan(
-                id="r1", agente="quimico", objetivo="Consultar", depende_de=[]
-            )
-        ],
-    )
-    specialist = QuimicoResult(
-        intencao="consultar", resposta="Resultado confirmado."
-    )
-
-    result = SynthesizerAgent(model=model).invoke("Pergunta", plan, [specialist])
-
-    assert result == SynthesisResult(resposta="Resposta consolidada.")
+def test_synthesizer_preserves_reviewed_answer():
+    reviewed = SynthesisResult(resposta="Resultado confirmado.")
+    assert SynthesizerAgent().invoke(reviewed) is reviewed
 
 
 def test_judge_evaluates_answer_and_evidence():
@@ -168,6 +153,7 @@ def test_agent_supports_async_invocation():
             "status": "fora_escopo",
             "pergunta_original": "Conte uma piada",
             "rotas": [],
+            "resposta": "Posso ajudar com o Quimia.",
         }
     )
 

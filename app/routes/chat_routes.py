@@ -31,9 +31,9 @@ async def conversar(request: ChatRequest) -> ChatResponse:
     user_id = str(request.user_id)
     try:
         context = await asyncio.to_thread(load_chat_context, user_id, request.session_id)
-        answer = await asyncio.wait_for(run_chat(request.pergunta, user_id, context), timeout=180)
-        await asyncio.to_thread(save_turn, user_id, request.session_id, request.pergunta, answer)
-        return ChatResponse(resposta=answer)
+        result = await asyncio.wait_for(run_chat(request.pergunta, user_id, context), timeout=180)
+        await asyncio.to_thread(save_turn, user_id, request.session_id, request.pergunta, result.resposta)
+        return ChatResponse(resposta=result.resposta, agentes_acionados=result.agentes_acionados)
     except Exception:
         logger.exception("Falha ao processar chat")
         raise HTTPException(503, "Não foi possível concluir sua mensagem agora. Tente novamente em instantes.") from None

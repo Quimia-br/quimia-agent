@@ -165,16 +165,19 @@ POST /chat -> Try it out. Exemplo de corpo:
 ```
 
 O fluxo implementado em `app/agent/workflow.py` usa LangGraph:
-guardrail de entrada -> orquestrador -> especialistas -> sintetizador ->
-guardrail de saída -> juiz Jev.
+guardrail de entrada -> orquestrador -> especialistas -> juiz Jev ->
+guardrail de saída -> sintetizador -> usuário.
 Rotas independentes executam em paralelo; rotas dependentes recebem os resultados
 anteriores. Quando uma dependência exige esclarecimento, sua consulta dependente
-não é executada. Pedidos fora de escopo ou ambíguos seguem para sintetizador e
-juiz sem chamar especialistas.
+não é executada. Em saudações e pedidos sem especialista, o orquestrador escreve
+a resposta, que passa pelo guardrail de saída e é entregue pelo sintetizador.
 
-O juiz recebe as evidências das tools e do FAQ. Se pedir revisão, a resposta
-volta ao sintetizador uma vez e é julgada novamente. Respostas bloqueadas ou
-que continuem sem aprovação são substituídas por uma mensagem conservadora.
+O juiz avalia cada resposta de especialista com suas próprias evidências das
+tools ou do FAQ. Se não aprovar uma resposta, o turno usa uma mensagem
+conservadora. O guardrail de saída preserva a resposta segura sem reescrevê-la
+e substitui conteúdo inadequado por uma mensagem genérica. O sintetizador
+entrega exatamente o texto aprovado pelo guardrail de saída. Falha técnica
+do guardrail de entrada retorna 503, sem simular uma recusa por conteúdo.
 Erros em especialistas são tratados como indisponibilidade, não como evidência.
 
 O MongoDB armazena pares de pergunta/resposta em `chat_turns`, com `user_id`,
@@ -190,7 +193,7 @@ expor o histórico em produção.
 O turno só é salvo após o fluxo terminar. Falhas de persistência ou processamento
 retornam 503 com uma mensagem pública, sem detalhes de credenciais.
 A execução do grafo tem timeout de 180 segundos. Os guardrails de entrada e saída
-fazem parte do fluxo; a avaliação final é realizada pelo juiz Jev.
+fazem parte do fluxo; a avaliação do conteúdo dos especialistas é feita pelo juiz Jev.
 
 ### Encerramento de sessão
 

@@ -13,10 +13,11 @@ class RoutePlan(BaseModel):
 
 
 class OrchestratorResult(BaseModel):
-    status: Literal["roteado", "esclarecer", "fora_escopo"]
+    status: Literal["roteado", "esclarecer", "fora_escopo", "saudacao"]
     pergunta_original: str
     rotas: list[RoutePlan] = Field(default_factory=list, max_length=3)
     esclarecer: str | None = None
+    resposta: str | None = None
 
     @model_validator(mode="after")
     def validate_status_contract(self):
@@ -28,6 +29,10 @@ class OrchestratorResult(BaseModel):
             raise ValueError("O status 'esclarecer' exige uma pergunta.")
         if self.status != "esclarecer" and self.esclarecer is not None:
             raise ValueError("Somente o status 'esclarecer' pode pedir esclarecimento.")
+        if self.status == "roteado" and self.resposta is not None:
+            raise ValueError("O roteamento não pode antecipar a resposta dos especialistas.")
+        if self.status != "roteado" and not self.resposta:
+            raise ValueError("Um plano sem especialistas exige resposta do orquestrador.")
 
         route_ids = [route.id for route in self.rotas]
         if len(route_ids) != len(set(route_ids)):

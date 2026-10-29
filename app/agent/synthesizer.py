@@ -1,77 +1,13 @@
-import json
-from typing import Any
+"""Entrega a resposta aprovada pelo guardrail de saída sem gerar novos fatos."""
 
-from app.agent.base import StructuredAgent
-from app.agent.contracts import (
-    OrchestratorResult,
-    SpecialistResult,
-    SynthesisResult,
-)
-from app.agent.llms import ModelProfile, create_chat_model
-from app.agent.prompts import SINTETIZADOR_PROMPT_COMPLETO
+from app.agent.contracts import SynthesisResult
 
 
 class SynthesizerAgent:
-    """Consolida as respostas dos especialistas para o usuário final."""
+    """Última etapa do fluxo: preserva exatamente o texto revisado."""
 
-    def __init__(self, model: Any | None = None) -> None:
-        self._agent = StructuredAgent(
-            system_prompt=SINTETIZADOR_PROMPT_COMPLETO,
-            human_template=(
-                "PERGUNTA_ORIGINAL:\n{pergunta_original}\n\n"
-                "PLANO_ORQUESTRADOR:\n{plano_orquestrador}\n\n"
-                "RESPOSTAS_ESPECIALISTAS:\n{respostas_especialistas}\n\n"
-                "FEEDBACK_GUARDRAIL:\n{feedback_guardrail}"
-            ),
-            output_schema=SynthesisResult,
-            model=model or create_chat_model(ModelProfile.FAST),
-        )
+    def invoke(self, resposta_revisada: SynthesisResult) -> SynthesisResult:
+        return resposta_revisada
 
-    @staticmethod
-    def _payload(
-        pergunta_original: str,
-        plano_orquestrador: OrchestratorResult,
-        respostas_especialistas: list[SpecialistResult],
-        feedback_guardrail: str,
-    ) -> dict[str, str]:
-        return {
-            "pergunta_original": pergunta_original,
-            "plano_orquestrador": plano_orquestrador.model_dump_json(),
-            "respostas_especialistas": json.dumps(
-                [response.model_dump() for response in respostas_especialistas],
-                ensure_ascii=False,
-            ),
-            "feedback_guardrail": feedback_guardrail,
-        }
-
-    def invoke(
-        self,
-        pergunta_original: str,
-        plano_orquestrador: OrchestratorResult,
-        respostas_especialistas: list[SpecialistResult],
-        feedback_guardrail: str = "Não fornecido.",
-    ) -> SynthesisResult:
-        return self._agent.invoke(
-            self._payload(
-                pergunta_original,
-                plano_orquestrador,
-                respostas_especialistas,
-                feedback_guardrail,
-            )
-        )
-
-    async def ainvoke(
-        self,
-        pergunta_original: str,
-        plano_orquestrador: OrchestratorResult,
-        respostas_especialistas: list[SpecialistResult],
-        feedback_guardrail: str = "Não fornecido.",
-    ) -> SynthesisResult:
-        return await self._agent.ainvoke(
-            self._payload(
-                pergunta_original,
-                plano_orquestrador,
-                respostas_especialistas,
-                feedback_guardrail,
-            )
-        )
+    async def ainvoke(self, resposta_revisada: SynthesisResult) -> SynthesisResult:
+        return self.invoke(resposta_revisada)

@@ -9,9 +9,11 @@ class FakeChatModel:
 
     def __init__(self, **kwargs):
         self.kwargs = kwargs
+        self.structured_method = None
         self.instances.append(self)
 
     def with_structured_output(self, _schema, method="function_calling"):
+        self.structured_method = method
         return RunnableLambda(lambda payload: payload)
 
 
@@ -65,6 +67,7 @@ def test_fast_profile_does_not_create_gemini_fallback(monkeypatch):
 def test_structured_model_uses_fallback_after_primary_failure():
     class FailingModel:
         def with_structured_output(self, _schema, method="function_calling"):
+            assert method == "json_mode"
             def fail(_payload):
                 raise RuntimeError("primary unavailable")
 
@@ -72,6 +75,7 @@ def test_structured_model_uses_fallback_after_primary_failure():
 
     class WorkingModel:
         def with_structured_output(self, _schema, method="function_calling"):
+            assert method == "json_mode"
             return RunnableLambda(lambda _payload: {"provider": "fallback"})
 
     model = llms.ChatModelWithFallback(FailingModel(), WorkingModel())
@@ -79,6 +83,12 @@ def test_structured_model_uses_fallback_after_primary_failure():
     result = model.with_structured_output(dict).invoke({"question": "test"})
 
     assert result == {"provider": "fallback"}
+
+
+def test_structured_model_uses_json_content_instead_of_tool_calls():
+    model = FakeChatModel()
+    llms.ChatModelWithFallback(model).with_structured_output(dict)
+    assert model.structured_method == "json_mode"
 
 
 def test_llms_requires_api_key(monkeypatch):
