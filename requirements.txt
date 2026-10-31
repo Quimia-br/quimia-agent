@@ -8,6 +8,7 @@ pymongo
 
 # Frameworks de IA & Agentes
 langchain
+langsmith>=0.7.12,<0.8
 langgraph
 langchain-google-genai
 langchain-openai

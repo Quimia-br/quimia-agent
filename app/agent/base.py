@@ -37,8 +37,8 @@ class StructuredAgent(Generic[SchemaT]):
     def invoke(self, payload: Mapping[str, Any]) -> SchemaT:
         return self._validate(self._chain.invoke(dict(payload)))
 
-    async def ainvoke(self, payload: Mapping[str, Any]) -> SchemaT:
-        return self._validate(await self._chain.ainvoke(dict(payload)))
+    async def ainvoke(self, payload: Mapping[str, Any], config=None) -> SchemaT:
+        return self._validate(await self._chain.ainvoke(dict(payload), config=config))
 
     def _validate(self, value: Any) -> SchemaT:
         if isinstance(value, self._output_schema):

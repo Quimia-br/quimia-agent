@@ -2,12 +2,14 @@
 
 from collections.abc import Sequence
 from typing import Any
+import time
 
 from qdrant_client.http.exceptions import UnexpectedResponse
 
 from app.agent.contracts import Evidence
 from app.core.config import AppConfig, carregar_config
 from app.agent.specialists.faq.vectorstore import FaqConfigurationError, get_embeddings, get_qdrant_client
+from app.observability.telemetry import record_usage, span
 
 
 def _page_number(payload: dict[str, Any]) -> int | None:
@@ -32,16 +34,27 @@ def retrieve_faq_evidence(
     active_config = config or carregar_config()
     active_client = client or get_qdrant_client()
     active_embeddings = embeddings or get_embeddings()
-    query_vector = active_embeddings.embed_query(normalized_question)
+    embedding_model = getattr(active_config, "gemini_embedding_model", "unknown-embedding")
+    started = time.perf_counter()
+    with span("gemini_embeddings"):
+        try:
+            query_vector = active_embeddings.embed_query(normalized_question)
+        except Exception as exc:
+            record_usage(embedding_model, None, kind="embedding", error=type(exc).__name__, started_at=started)
+            raise
+        else:
+            # O wrapper LangChain de embeddings não expõe usage; não inventar tokens.
+            record_usage(embedding_model, None, kind="embedding", started_at=started)
 
     try:
-        response = active_client.query_points(
-            collection_name=active_config.faq_collection,
-            query=query_vector,
-            limit=active_config.faq_top_k,
-            score_threshold=active_config.faq_score_threshold,
-            with_payload=True,
-        )
+        with span("qdrant_query"):
+            response = active_client.query_points(
+                collection_name=active_config.faq_collection,
+                query=query_vector,
+                limit=active_config.faq_top_k,
+                score_threshold=active_config.faq_score_threshold,
+                with_payload=True,
+            )
     except UnexpectedResponse as exc:
         if exc.status_code in (401, 403):
             raise FaqConfigurationError(

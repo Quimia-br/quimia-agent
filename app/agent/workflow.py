@@ -17,6 +17,8 @@ from app.agent.specialists.bau.bau_agent import BauAgent
 from app.agent.specialists.quimico.quimico_agent import ChemicalAgent
 from app.agent.specialists.faq.faq_agent import FaqAgent
 from app.agent.specialists.gps.gps_agent import GpsAgent, GPS_RESPONSE
+from app.observability.telemetry import current, mark, stage
+from app.observability.callbacks import MetricsCallback
 
 logger = logging.getLogger(__name__)
 SAFE_RESPONSE = "Não consegui confirmar uma resposta segura com as informações disponíveis no app. Consulte as orientações do fabricante e não misture produtos sem confirmação."
@@ -51,11 +53,13 @@ def specialist_factory(name, user_id):
 
 def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
                 input_guardrail=None, output_guardrail=None, factory=specialist_factory):
+    @stage("guardrail_entrada")
     async def check_input(state):
         try:
             decision = await (input_guardrail or InputGuardrail()).ainvoke(state["pergunta"])
             allowed = decision.permitido
             if not allowed:
+                mark(outcome="bloqueado_entrada")
                 logger.warning("Guardrail de entrada recusou a mensagem: categoria=%s", decision.categoria)
         except Exception:
             logger.exception("Falha no guardrail de entrada")
@@ -67,10 +71,14 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
     def route_input(state):
         return "orquestrador" if state["entrada_permitida"] else "encerrar"
 
+    @stage("orquestrador")
     async def orchestrate(state):
         plan = await (orchestrator or OrchestratorAgent()).ainvoke(state["pergunta"], state["contexto"])
         if plan.pergunta_original != state["pergunta"]:
             raise ValueError("O orquestrador alterou a pergunta original.")
+        mark(route=",".join(route.agente for route in plan.rotas) or plan.status)
+        if not plan.rotas:
+            mark(outcome=plan.status)
         return {"plano": plan,
                 "agentes_acionados": [*state["agentes_acionados"], "orquestrador"]}
 
@@ -80,11 +88,13 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
     def direct_answer(state):
         return {"candidata": SynthesisResult(resposta=state["plano"].resposta)}
 
+    @stage("especialistas")
     async def specialists(state):
         pending = list(state["plano"].rotas)
         completed = {}
         evidence = []
 
+        @stage(lambda route: route.agente, kind="agent")
         async def run(route):
             dependencies = [completed[key] for key in route.depende_de]
             if any(item.esclarecer for item in dependencies):
@@ -108,7 +118,14 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
             ready = [route for route in pending if all(key in completed for key in route.depende_de)]
             if not ready:
                 raise ValueError("Dependências de rotas inválidas.")
-            outputs = await asyncio.gather(*(run(route) for route in ready))
+            tasks = [asyncio.create_task(run(route)) for route in ready]
+            try:
+                outputs = await asyncio.gather(*tasks)
+            except BaseException:
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                raise
             for route, (result, sources) in zip(ready, outputs):
                 if result.dominio != route.agente:
                     raise ValueError("Domínio inesperado do especialista.")
@@ -121,6 +138,7 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
                 "agentes_acionados": [*state["agentes_acionados"],
                                       *(route.agente for route in state["plano"].rotas)]}
 
+    @stage("juiz")
     async def evaluate(state):
         verdicts = []
         for route, result in zip(state["plano"].rotas, state["resultados"]):
@@ -130,6 +148,9 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
             verdicts.append(await (judge or JudgeAgent()).ainvoke(
                 state["pergunta"], answer, [result], scoped_evidence))
         if all(verdict.aprovado for verdict in verdicts):
+            trace = current.get()
+            if trace and trace.outcome == "desconhecido":
+                mark(outcome="esclarecer" if any(r.esclarecer for r in state["resultados"]) else "respondido")
             parts = []
             for result in state["resultados"]:
                 part = result.resposta
@@ -138,22 +159,26 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
                 parts.append(part)
             candidate = SynthesisResult(resposta="\n\n".join(parts))
         else:
+            mark(outcome="nao_aprovado")
             candidate = SynthesisResult(resposta=SAFE_RESPONSE)
         return {"vereditos": verdicts, "candidata": candidate,
                 "agentes_acionados": [*state["agentes_acionados"],
                                       *(["juiz"] * len(verdicts))]}
 
+    @stage("guardrail_saida")
     async def check_output(state):
         try:
             answer = await (output_guardrail or OutputGuardrail()).ainvoke(
                 state["pergunta"], state["candidata"],
                 state.get("resultados", []), state.get("evidencias", []))
         except Exception:
+            mark(degraded=True)
             logger.exception("Falha no guardrail de saída")
             answer = SynthesisResult(resposta=OUTPUT_SAFE_RESPONSE)
         return {"revisada": answer,
                 "agentes_acionados": [*state["agentes_acionados"], "guardrail_saida"]}
 
+    @stage("sintetizador")
     async def synthesize(state):
         answer = await (synthesizer or SynthesizerAgent()).ainvoke(state["revisada"])
         if answer != state["revisada"]:
@@ -183,5 +208,8 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
 
 
 async def run_chat(pergunta, user_id, contexto="Não fornecido."):
-    result = await build_graph().ainvoke({"pergunta": pergunta, "user_id": user_id, "contexto": contexto})
+    trace = current.get()
+    config = {"callbacks": [MetricsCallback(trace)]} if trace else {}
+    result = await build_graph().ainvoke(
+        {"pergunta": pergunta, "user_id": user_id, "contexto": contexto}, config=config)
     return ChatRunResult(resposta=result["resposta"], agentes_acionados=result["agentes_acionados"])

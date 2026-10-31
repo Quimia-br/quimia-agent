@@ -1,0 +1,113 @@
+/* Quimia — Catálogo de Dados
+   Tokens do design system (Figma: Tokens › Cores, Playground › Nova paleta de cores,
+   Web Componentes › Produtos - table). */
+
+:root {
+  /* Paleta de marca */
+  --paleta-2dbc93: #2DBC93;
+  --paleta-00dc9d: #00DC9D;
+  --paleta-1eee97: #1EEE97;
+  --paleta-4cf1ff: #4CF1FF;
+  --paleta-5adfea: #5ADFEA;
+  --paleta-02c1d6: #02C1D6;
+  --paleta-0e718f: #0E718F;
+
+  /* Brand */
+  --brand-primary: #1EEE97;
+  --brand-secondary: #5ADFEA;
+  --brand-accent: #00DC9D;
+
+  /* Surface */
+  --surface-background: #F7F6F5;
+  --surface-base: #FFFFFF;
+  --surface-disabled: #E3E3E3;
+
+  /* Foreground */
+  --foreground-primary: #404040;
+  /* Figma: #949494. Escurecido para passar no WCAG AA (4,5:1) como texto:
+     #949494 dá só 2,8:1 sobre surface/background. */
+  --foreground-subtle: #6B6B6B;
+  --foreground-disabled: #B2B2B2;
+  --foreground-on-color: #FFFFFF;
+  --titulo: #3F3F3F;
+
+  /* Primary / Secondary (ações) */
+  --primary-primary: #5ADFEA;
+  --primary-pressed: #02C1D6;
+  --primary-on-color: #404040;
+  --secondary-primary: #ECECEC;
+  --secondary-pressed: #C2C2C2;
+  --secondary-on-color: rgba(64, 64, 64, .6);
+
+  /* Feedback */
+  --feedback-success: #1EEE97;
+  --feedback-warning: #FCC368;
+  --feedback-error: #FF2B7C;
+  --feedback-error-texto: #D6135F; /* fundo para texto branco: 5,1:1 */
+
+  /* Border */
+  --border-primary: rgba(64, 64, 64, .2);
+  --border-secondary: rgba(64, 64, 64, .1);
+  --border-focus: #00DC9D;
+
+  /* Espaçamento e raio */
+  --padding-none: 0px;
+  --padding-small: 12px;
+  --padding-medium: 16px;
+  --padding-big: 24px;
+  --padding-huge: 32px;
+  --radius-full: 1000px;
+  --radius-card: 60px;
+  --radius-row: 32px;
+
+  /* Tipografia: Aeonik é a fonte do design system (licenciada); sem ela
+     instalada, cai para a fonte do sistema. */
+  --fonte: "Aeonik", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --fonte-marca: "Reem Kufi", "Aeonik", system-ui, sans-serif;
+  --mono: "Cascadia Code", Consolas, "SFMono-Regular", monospace;
+
+  --codigo-fundo: #2E2E2E;
+  --codigo-texto: #F7F6F5;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-background: #2E2E2E;
+    --surface-base: #494949;
+    --surface-disabled: #848484;
+    --foreground-primary: #FFFFFF;
+    /* O token foreground/secondary escuro (branco 20%) não tem contraste para
+       texto; usamos secondary/onColor escuro (branco 60%). */
+    --foreground-subtle: rgba(255, 255, 255, .6);
+    --foreground-disabled: #E5E5E5;
+    --titulo: #FFFFFF;
+    --primary-on-color: #FFFFFF;
+    --secondary-primary: #646464;
+    --secondary-pressed: #383838;
+    --secondary-on-color: rgba(255, 255, 255, .6);
+    --border-primary: rgba(255, 255, 255, .1);
+    --border-secondary: rgba(255, 255, 255, .06);
+    --codigo-fundo: #262626;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --surface-background: #2E2E2E;
+  --surface-base: #494949;
+  --surface-disabled: #848484;
+  --foreground-primary: #FFFFFF;
+  --foreground-subtle: rgba(255, 255, 255, .6);
+  --foreground-disabled: #E5E5E5;
+  --titulo: #FFFFFF;
+  --primary-on-color: #FFFFFF;
+  --secondary-primary: #646464;
+  --secondary-pressed: #383838;
+  --secondary-on-color: rgba(255, 255, 255, .6);
+  --border-primary: rgba(255, 255, 255, .1);
+  --border-secondary: rgba(255, 255, 255, .06);
+  --codigo-fundo: #262626;
+  color-scheme: dark;
+}
+

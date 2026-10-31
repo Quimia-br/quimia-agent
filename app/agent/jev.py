@@ -2,6 +2,7 @@
 
 import os
 import ssl
+import time
 from typing import Any, Literal
 
 import httpx
@@ -10,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.contracts import Evidence, JudgeResult, SpecialistResult, SynthesisResult
 from app.core.config import normalize_commandcode_base_url
+from app.observability.telemetry import record_usage
 
 DEFAULT_BASE_URL = "https://api.commandcode.ai/provider/v1"
 DEFAULT_MODEL = "typesafe/jev-1.14.0"
@@ -123,6 +125,14 @@ class JevClient:
         self._transport = transport
 
     def decide(self, state: dict[str, Any]) -> JevAnswers:
+        started = time.perf_counter()
+        try:
+            return self._decide(state, started)
+        except Exception as exc:
+            record_usage(self.model, None, error=type(exc).__name__, started_at=started)
+            raise
+
+    def _decide(self, state: dict[str, Any], started: float) -> JevAnswers:
         with httpx.Client(verify=ssl.create_default_context(), timeout=self.timeout,
                           transport=self._transport,
                           headers={"Authorization": f"Bearer {self.api_key}",
@@ -132,7 +142,9 @@ class JevClient:
             })
             response.raise_for_status()
             result = response.json()
-        return JevAnswers.model_validate(result["answers"])
+        answers = JevAnswers.model_validate(result["answers"])
+        record_usage(self.model, result.get("usage"), started_at=started)
+        return answers
 
 
 def to_judge_result(answers: JevAnswers) -> JudgeResult:
