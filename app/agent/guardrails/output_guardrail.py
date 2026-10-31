@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from app.agent.base import StructuredAgent
 from app.agent.contracts import Evidence, SpecialistResult, SynthesisResult
 from app.agent.llms import create_chat_model
+from app.observability.telemetry import mark
 
 
 OUTPUT_SAFE_RESPONSE = (
@@ -57,4 +58,6 @@ class OutputGuardrail:
             "evidencias": json.dumps([item.model_dump() for item in evidencias], ensure_ascii=False),
         }
         decision = await self._agent.ainvoke(payload)
+        if not decision.segura:
+            mark(outcome="bloqueado_saida")
         return candidata if decision.segura else SynthesisResult(resposta=OUTPUT_SAFE_RESPONSE)

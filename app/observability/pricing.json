@@ -1,0 +1,11 @@
+{
+  "as_of": "2026-10-30",
+  "currency": "USD",
+  "policy": "Estimativa por preço de tabela, sem descontos de cache, planos ou impostos. Não é fatura.",
+  "models": {
+    "xiaomi/mimo-v2.6-flash": {"input": 0.14, "output": 0.28, "source": "https://commandcode.ai/models"},
+    "xiaomi/mimo-v2.6-pro": {"input": 0.435, "output": 0.87, "source": "https://commandcode.ai/models"},
+    "typesafe/jev-1.14.0": {"input": 0.042, "output": 0, "source": "https://commandcode.ai/docs/reference/cli/models"},
+    "gemini-embedding-2": {"input": 0.20, "output": 0, "source": "https://ai.google.dev/gemini-api/docs/pricing"}
+  }
+}

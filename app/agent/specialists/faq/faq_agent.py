@@ -8,6 +8,7 @@ from app.agent.contracts import Evidence, FaqResult
 from app.agent.llms import create_chat_model
 from app.agent.prompts import FAQ_PROMPT_COMPLETO
 from app.agent.specialists.faq.faq_tools import consultar_faq
+from app.observability.telemetry import mark
 
 FaqRetriever = Callable[[str], list[Evidence]]
 FAQ_NOT_FOUND = "Não encontrei essa informação no FAQ oficial do Quimia."
@@ -58,6 +59,7 @@ class FaqAgent:
     ) -> tuple[FaqResult, list[Evidence]]:
         evidencias = self._retriever(pergunta_original)
         if not evidencias:
+            mark(outcome="sem_evidencias")
             return FaqResult(intencao="consultar", resposta=FAQ_NOT_FOUND), []
         result = self._agent.invoke(
             self._payload(pergunta_original, objetivo, evidencias)
@@ -79,6 +81,7 @@ class FaqAgent:
     ) -> tuple[FaqResult, list[Evidence]]:
         evidencias = await asyncio.to_thread(self._retriever, pergunta_original)
         if not evidencias:
+            mark(outcome="sem_evidencias")
             return FaqResult(intencao="consultar", resposta=FAQ_NOT_FOUND), []
         result = await self._agent.ainvoke(
             self._payload(pergunta_original, objetivo, evidencias)

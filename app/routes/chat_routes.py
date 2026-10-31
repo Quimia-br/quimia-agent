@@ -11,6 +11,7 @@ from app.database.chat_history import load_chat_context
 from app.database.chat_summaries import has_summary, load_session_turns, save_summary
 from app.database.mongo import get_mongo
 from app.schemas.schemas import ChatRequest, ChatResponse, CloseSessionRequest, CloseSessionResponse
+from app.observability.telemetry import span
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +31,11 @@ async def conversar(request: ChatRequest) -> ChatResponse:
     """Uma mensagem do usuário, uma resposta do Kemi."""
     user_id = str(request.user_id)
     try:
-        context = await asyncio.to_thread(load_chat_context, user_id, request.session_id)
+        with span("mongodb_history"):
+            context = await asyncio.to_thread(load_chat_context, user_id, request.session_id)
         result = await asyncio.wait_for(run_chat(request.pergunta, user_id, context), timeout=180)
-        await asyncio.to_thread(save_turn, user_id, request.session_id, request.pergunta, result.resposta)
+        with span("mongodb_save"):
+            await asyncio.to_thread(save_turn, user_id, request.session_id, request.pergunta, result.resposta)
         return ChatResponse(resposta=result.resposta, agentes_acionados=result.agentes_acionados)
     except Exception:
         logger.exception("Falha ao processar chat")

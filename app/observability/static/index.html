@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="light">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="description" content="Painel de observabilidade do Quimia: latência, confiabilidade, consumo e retorno do assistente Kemi.">
+    <title>Quimia · Operação Kemi</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Reem+Kufi&display=swap" rel="stylesheet">
+    <link rel="icon" href="/monitor-assets/icon/logo-quimia-symbol.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/monitor-assets/brand.css">
+    <link rel="stylesheet" href="/monitor-assets/monitor.css">
+    <script src="/monitor-assets/monitor.js" defer>
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Pular para o conteúdo</a>
+    <div class="shell">
+      <aside class="sidebar">
+        <a class="brand" href="#overview"><img src="/monitor-assets/icon/logo-quimia-symbol.svg" width="39" height="44" alt=""><span>Quimia<small>Operação Kemi</small></span></a>
+        <p class="nav-label">OBSERVABILIDADE</p>
+        <nav aria-label="Seções do painel">
+          <a href="#overview"><span class="icon icon-geral" aria-hidden="true"></span> <span>Visão geral</span></a>
+          <a href="#latency"><span class="icon icon-history" aria-hidden="true"></span> <span>Latência e agentes</span></a>
+          <a href="#economics"><span class="icon icon-puzzle" aria-hidden="true"></span> <span>Custos e retorno</span></a>
+          <a href="#traces"><span class="icon icon-calendar-fold" aria-hidden="true"></span> <span>Explorar turnos</span></a>
+        </nav>
+        <div class="side-note">
+          <span class="dot"></span>
+          Do pedido à entrega
+          <p>Tempos, consumo e confiabilidade do assistente em um só lugar.</p>
+          <small>Metadados no LangSmith.<br>Sem texto das conversas.</small>
+        </div>
+      </aside>
+      <main id="main-content" tabindex="-1">
+        <header id="overview">
+          <div>
+            <p class="eyebrow">KEMI / SRE</p>
+            <h1>Observabilidade do sistema</h1>
+            <p class="muted">Acompanhe a operação e entenda o custo de resolver.</p>
+          </div>
+          <div class="header-actions">
+            <button id="theme" class="quiet" type="button" aria-pressed="false" aria-label="Alternar tema">◐ Tema</button>
+            <button id="refresh" type="button"><span class="icon icon-chevron-right" aria-hidden="true"></span> Atualizar</button>
+          </div>
+        </header>
+        <div class="toolbar">
+          <label>Janela <select id="days"><option value="1">Últimas 24 horas</option><option value="7" selected>Últimos 7 dias</option><option value="30">Últimos 30 dias</option></select></label>
+          <span id="updated" class="muted" role="status" aria-atomic="true">Conectando ao painel…</span>
+        </div>
+        <div id="error" class="notice error" role="alert" hidden>
+        </div>
+        <section id="slo" class="slo" aria-live="polite">
+          <div>
+            <p class="eyebrow">CONFIABILIDADE DO SERVIÇO</p>
+            <h2 id="slo-title">Aguardando medições</h2>
+            <p id="slo-description">Envie uma mensagem pelo /chat para começar.</p>
+          </div>
+          <span id="slo-badge" class="badge">Sem amostras</span>
+        </section>
+        <section id="cards" class="cards" aria-label="Indicadores principais">
+        </section>
+        <section id="latency" class="panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">DESEMPENHO</p>
+              <h2>O caminho de uma resposta</h2>
+            </div>
+            <span class="muted">Tempo de parede por etapa · chamadas concorrentes podem se sobrepor</span>
+          </div>
+          <div class="chart-grid">
+            <div>
+              <h3>Tempo total por turno</h3>
+              <div id="latency-chart" class="chart">
+              </div>
+            </div>
+            <div>
+              <h3>Custo conhecido acumulado</h3>
+              <div id="cost-chart" class="chart">
+              </div>
+            </div>
+          </div>
+          <div id="stages" class="table-scroll" role="region" aria-label="Tempos por etapa" tabindex="0">
+          </div>
+        </section>
+        <section id="economics" class="panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">VIABILIDADE</p>
+              <h2>Quanto custa e quanto retorna?</h2>
+            </div>
+            <span class="badge">USD · estimativas</span>
+          </div>
+          <p class="muted">ROI por tempo economizado: minutos por resolução × custo da hora ÷ 60. Preencha os valores para calcular o benefício.</p>
+          <form id="assumptions">
+            <div class="inputs">
+              <label>Turnos por usuário / semana<input name="turns_per_user" type="number" min="0.1" max="10000" step="0.1" value="5" required></label>
+              <label>Minutos economizados / resolução<input name="minutes_saved" type="number" min="0" max="10000" step="0.1" placeholder="Definir"></label>
+              <label>Custo da hora (US$)<input name="hourly_cost" type="number" min="0" max="100000" step="0.01" placeholder="Definir"></label>
+              <label>Infraestrutura / semana (US$)<input name="fixed_weekly_cost" type="number" min="0" max="10000000" step="0.01" value="0" required></label>
+            </div>
+            <details>
+              <summary>Premissas de planejamento sem dados observados</summary>
+              <div class="inputs">
+                <label>Tokens de entrada / turno<input name="planned_input_tokens" type="number" min="0" max="10000000" value="10000" required></label>
+                <label>Tokens de saída / turno<input name="planned_output_tokens" type="number" min="0" max="10000000" value="2000" required></label>
+                <label>Taxa de resolução assumida (0 a 1)<input name="assumed_resolution_rate" type="number" min="0" max="1" step="0.01" value="0.7" required></label>
+              </div>
+            </details>
+            <button type="submit">Aplicar premissas <span class="icon icon-chevron-right" aria-hidden="true"></span></button>
+          </form>
+          <div id="basis" class="notice">
+          </div>
+          <div id="scenarios" class="scenario-grid">
+          </div>
+          <h3>Consumo por modelo</h3>
+          <div id="models" class="table-scroll" role="region" aria-label="Consumo por modelo" tabindex="0">
+          </div>
+          <noscript><p class="notice">Ative o JavaScript para consultar e atualizar as métricas do painel.</p></noscript>
+          <p id="pricing" class="footnote"></p>
+        </section>
+        <section id="traces" class="panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">INVESTIGAÇÃO</p>
+              <h2>Explore cada turno</h2>
+            </div>
+            <span class="muted">100 turnos mais recentes da janela</span>
+          </div>
+          <p class="muted">Abra um turno para ver as etapas. “Resolveu” é uma confirmação manual por turno; a aprovação do juiz não conta como resolução.</p>
+          <div id="turns" class="table-scroll" role="region" aria-label="Turnos recentes" tabindex="0">
+          </div>
+          <div id="detail" role="region" aria-label="Detalhes do turno selecionado" tabindex="-1" hidden>
+          </div>
+        </section>
+        <footer>
+          Quimia · Operação Kemi
+          <span>Callbacks LangChain + LangGraph · telemetria no LangSmith</span>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>
