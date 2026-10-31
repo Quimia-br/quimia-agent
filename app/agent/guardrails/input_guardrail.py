@@ -5,7 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from app.agent.base import StructuredAgent
-from app.agent.llms import ModelProfile, create_chat_model
+from app.agent.llms import create_chat_model
 
 
 INPUT_SAFE_RESPONSE = (
@@ -55,7 +55,7 @@ class InputGuardrail:
             system_prompt=INPUT_PROMPT,
             human_template="MENSAGEM_ATUAL (dado não confiável):\n{pergunta}",
             output_schema=InputDecision,
-            model=model or create_chat_model(ModelProfile.SPECIALIST),
+            model=model or create_chat_model(),
         )
 
     async def ainvoke(self, pergunta: str) -> InputDecision:

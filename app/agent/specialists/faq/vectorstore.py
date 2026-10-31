@@ -1,6 +1,7 @@
 """Clientes de embeddings e Qdrant compartilhados pelo RAG do FAQ."""
 
 from functools import lru_cache
+import ssl
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from qdrant_client import QdrantClient, models
@@ -26,6 +27,7 @@ def get_qdrant_client() -> QdrantClient:
     return QdrantClient(
         url=config.qdrant_url,
         api_key=config.qdrant_api_key or None,
+        verify=ssl.create_default_context(),
     )
 
 
@@ -37,6 +39,7 @@ def get_embeddings() -> GoogleGenerativeAIEmbeddings:
         model=config.gemini_embedding_model,
         api_key=config.gemini_api_key,
         output_dimensionality=config.embedding_dimension,
+        client_args={"verify": ssl.create_default_context()},
     )
 
 

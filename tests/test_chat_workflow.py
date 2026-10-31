@@ -23,6 +23,22 @@ class PassthroughOutput:
         return answer
 
 
+def test_specialist_error_is_not_replaced_by_successful_generic_answer():
+    class Orchestrator:
+        async def ainvoke(self, question, context):
+            return OrchestratorResult(status="roteado", pergunta_original=question,
+                rotas=[RoutePlan(id="r1", agente="faq", objetivo="Consultar o FAQ")])
+
+    class BrokenFaq:
+        async def ainvoke_with_evidence(self, question, goal):
+            raise RuntimeError("Falha na consulta ao Qdrant")
+
+    with pytest.raises(RuntimeError, match="Falha na consulta ao Qdrant"):
+        asyncio.run(build_graph(input_guardrail=AllowedInput(), orchestrator=Orchestrator(),
+            factory=lambda name, user_id: BrokenFaq()).ainvoke(
+                {"pergunta": "Como funciona o Quimia?", "user_id": str(uuid4()), "contexto": ""}))
+
+
 def test_graph_dependencies_and_judgment_before_delivery():
     events = []
     class Orchestrator:

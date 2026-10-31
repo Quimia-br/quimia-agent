@@ -11,6 +11,7 @@ langchain
 langgraph
 langchain-google-genai
 langchain-openai
+httpx
 langchain-text-splitters
 google-generativeai
 

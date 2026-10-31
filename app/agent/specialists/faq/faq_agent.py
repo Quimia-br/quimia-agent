@@ -5,7 +5,7 @@ from typing import Any
 
 from app.agent.base import StructuredAgent
 from app.agent.contracts import Evidence, FaqResult
-from app.agent.llms import ModelProfile, create_chat_model
+from app.agent.llms import create_chat_model
 from app.agent.prompts import FAQ_PROMPT_COMPLETO
 from app.agent.specialists.faq.faq_tools import consultar_faq
 
@@ -33,7 +33,7 @@ class FaqAgent:
                 "TRECHOS_RECUPERADOS_DO_FAQ:\n{evidencias}"
             ),
             output_schema=FaqResult,
-            model=model or create_chat_model(ModelProfile.FAST),
+            model=model or create_chat_model(),
         )
 
     @staticmethod

@@ -31,8 +31,8 @@ class AppConfig(BaseModel):
     qdrant_url: str | None
     qdrant_api_key: str | None
     cors_origins: tuple[str, ...]
-    commandcode_fast_model: str
-    commandcode_specialist_model: str
+    commandcode_model: str
+    commandcode_model_fallback: str
     commandcode_timeout_seconds: float
     commandcode_max_retries: int
     gemini_embedding_model: str
@@ -46,14 +46,21 @@ def _parse_cors_origins(value: str) -> tuple[str, ...]:
     return tuple(origin.strip() for origin in value.split(",") if origin.strip())
 
 
+def normalize_commandcode_base_url(value: str) -> str:
+    url = value.strip().rstrip("/")
+    if url == "https://api.commandcode.ai":
+        return url + "/provider/v1"
+    return url
+
+
 def carregar_config() -> AppConfig:
     """Carrega e valida a configuração atual do ambiente."""
     return AppConfig(
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
         commandcode_api_key=os.getenv("COMMANDCODE_API_KEY"),
-        commandcode_base_url=os.getenv(
+        commandcode_base_url=normalize_commandcode_base_url(os.getenv(
             "COMMANDCODE_BASE_URL", "https://api.commandcode.ai/provider/v1"
-        ),
+        )),
         database_url=os.getenv("DATABASE_URL"),
         mongodb_uri=os.getenv("MONGODB_URI"),
         qdrant_url=os.getenv("QDRANT_URL"),
@@ -61,9 +68,9 @@ def carregar_config() -> AppConfig:
         cors_origins=_parse_cors_origins(
             os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS)
         ),
-        commandcode_fast_model=os.getenv("COMMANDCODE_FAST_MODEL", "Qwen/Qwen3.8-Flash"),
-        commandcode_specialist_model=os.getenv(
-            "COMMANDCODE_SPECIALIST_MODEL", "Qwen/Qwen3.8-27B"
+        commandcode_model=os.getenv("COMMANDCODE_MODEL", "xiaomi/mimo-v2.6-flash"),
+        commandcode_model_fallback=os.getenv(
+            "COMMANDCODE_MODEL_FALLBACK", "xiaomi/mimo-v2.6-pro"
         ),
         commandcode_timeout_seconds=os.getenv("COMMANDCODE_TIMEOUT_SECONDS", "30"),
         commandcode_max_retries=os.getenv("COMMANDCODE_MAX_RETRIES", "2"),
@@ -86,8 +93,8 @@ MONGODB_URI = CONFIG.mongodb_uri
 QDRANT_URL = CONFIG.qdrant_url
 QDRANT_API_KEY = CONFIG.qdrant_api_key
 CORS_ORIGINS = CONFIG.cors_origins
-COMMANDCODE_FAST_MODEL = CONFIG.commandcode_fast_model
-COMMANDCODE_SPECIALIST_MODEL = CONFIG.commandcode_specialist_model
+COMMANDCODE_MODEL = CONFIG.commandcode_model
+COMMANDCODE_MODEL_FALLBACK = CONFIG.commandcode_model_fallback
 
 def validar_config() -> list[str]:
     """Devolve a lista de problemas de configuração (vazia = tudo certo)."""

@@ -381,7 +381,7 @@ Saída:
 PERGUNTA_ORIGINAL=[pedido genérico sem produto, intenção ou referência identificável]
 
 Saída:
-{{"status":"esclarecer","pergunta_original":"[pedido genérico sem produto, intenção ou referência identificável]","rotas":[],"resposta":"Para ajudar melhor, você quer consultar informações de um produto, verificar seu Baú ou encontrar um local de descarte?","esclarecer":"Você quer consultar informações de um produto, verificar seu Baú ou encontrar um local de descarte?"}}
+{{"status":"esclarecer","pergunta_original":"[pedido genérico sem produto, intenção ou referência identificável]","rotas":[],"resposta":"Para ajudar melhor, você quer consultar informações de um produto, verificar seu Catálogo ou encontrar um local de descarte?","esclarecer":"Você quer consultar informações de um produto, verificar seu Baú ou encontrar um local de descarte?"}}
 
 
 #### Exemplo 7 — Fora do escopo

@@ -3,7 +3,7 @@ from app.agent.specialists.bau.bau_tools import create_bau_tools
 from typing import Any
 
 from app.agent.contracts import BauResult
-from app.agent.llms import ModelProfile, create_chat_model
+from app.agent.llms import create_chat_model
 from app.agent.prompts import BAU_PROMPT_COMPLETO
 
 
@@ -14,7 +14,7 @@ class BauAgent:
         if user_id is None:
             raise ValueError("user_id autenticado é obrigatório para o agente Baú.")
         tools = create_bau_tools(user_id)
-        selected_model = model or create_chat_model(ModelProfile.SPECIALIST)
+        selected_model = model or create_chat_model()
         self._agent = ToolAgent(selected_model, tools, BAU_PROMPT_COMPLETO, BauResult)
 
     def invoke(
