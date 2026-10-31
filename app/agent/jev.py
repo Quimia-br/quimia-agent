@@ -1,13 +1,15 @@
 """Decisões do Jev pela Provider API da CommandCode."""
 
-import json
 import os
+import ssl
 from typing import Any, Literal
-from urllib.request import Request, urlopen
+
+import httpx
 
 from pydantic import BaseModel, Field
 
 from app.agent.contracts import Evidence, JudgeResult, SpecialistResult, SynthesisResult
+from app.core.config import normalize_commandcode_base_url
 
 DEFAULT_BASE_URL = "https://api.commandcode.ai/provider/v1"
 DEFAULT_MODEL = "typesafe/jev-1.14.0"
@@ -108,24 +110,28 @@ class JevClient:
     """Cliente HTTP para `/systemone`, sem dependência do SDK TypeSafe."""
 
     def __init__(self, *, api_key: str | None = None, base_url: str | None = None,
-                 model: str = DEFAULT_MODEL, timeout: float = 30) -> None:
+                 model: str = DEFAULT_MODEL, timeout: float = 30,
+                 transport: httpx.BaseTransport | None = None) -> None:
         self.api_key = api_key or os.getenv("COMMANDCODE_API_KEY")
         if not self.api_key:
             raise JevConfigurationError("COMMANDCODE_API_KEY não está configurada.")
-        self.base_url = (base_url or os.getenv("COMMANDCODE_BASE_URL", DEFAULT_BASE_URL)).rstrip("/")
+        self.base_url = normalize_commandcode_base_url(
+            base_url or os.getenv("COMMANDCODE_BASE_URL", DEFAULT_BASE_URL)
+        )
         self.model = model
         self.timeout = timeout
+        self._transport = transport
 
     def decide(self, state: dict[str, Any]) -> JevAnswers:
-        body = json.dumps({"model": self.model, "state": state, "questions": QUESTIONS},
-                          ensure_ascii=False).encode("utf-8")
-        request = Request(
-            f"{self.base_url}/systemone", data=body, method="POST",
-            headers={"Authorization": f"Bearer {self.api_key}",
-                     "Content-Type": "application/json"},
-        )
-        with urlopen(request, timeout=self.timeout) as response:
-            result = json.load(response)
+        with httpx.Client(verify=ssl.create_default_context(), timeout=self.timeout,
+                          transport=self._transport,
+                          headers={"Authorization": f"Bearer {self.api_key}",
+                                   "User-Agent": "quimia-agent/1.0"}) as client:
+            response = client.post(f"{self.base_url}/systemone", json={
+                "model": self.model, "state": state, "questions": QUESTIONS,
+            })
+            response.raise_for_status()
+            result = response.json()
         return JevAnswers.model_validate(result["answers"])
 
 

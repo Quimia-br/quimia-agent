@@ -1,13 +1,31 @@
 from types import SimpleNamespace
 
+import httpx
+import pytest
 from langchain_core.runnables import RunnableLambda
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
 
 from app.agent.contracts import Evidence, FaqResult
 from app.agent.specialists.faq.faq_agent import FAQ_NOT_FOUND, FaqAgent
 from app.core.config import FAQ_PDF_PATH
 from app.agent.specialists.faq.ingest import ingest_faq
 from app.agent.specialists.faq.retriever import retrieve_faq_evidence
+from app.agent.specialists.faq.vectorstore import FaqConfigurationError
+
+
+def test_forbidden_faq_access_reports_configuration_error():
+    class Client:
+        def query_points(self, **kwargs):
+            raise UnexpectedResponse.for_response(httpx.Response(403, json={"error": "forbidden"}))
+
+    class Embeddings:
+        def embed_query(self, question):
+            return [0.1]
+
+    config = SimpleNamespace(faq_collection="faq", faq_top_k=3, faq_score_threshold=0.4)
+    with pytest.raises(FaqConfigurationError, match="Database API Key"):
+        retrieve_faq_evidence("Como funciona?", client=Client(), embeddings=Embeddings(), config=config)
 
 
 class FakeChatModel:

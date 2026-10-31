@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.base import StructuredAgent
 from app.agent.contracts import Evidence, SpecialistResult, SynthesisResult
-from app.agent.llms import ModelProfile, create_chat_model
+from app.agent.llms import create_chat_model
 
 
 OUTPUT_SAFE_RESPONSE = (
@@ -43,7 +43,7 @@ class OutputGuardrail:
                 "RESPOSTAS_ESPECIALISTAS:\n{especialistas}\n\nEVIDENCIAS:\n{evidencias}"
             ),
             output_schema=OutputDecision,
-            model=model or create_chat_model(ModelProfile.SPECIALIST),
+            model=model or create_chat_model(),
         )
 
     async def ainvoke(

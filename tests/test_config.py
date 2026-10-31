@@ -29,8 +29,8 @@ def test_validar_config_cors(monkeypatch):
 
 
 def test_commandcode_defaults_match_provider_model_ids(monkeypatch):
-    monkeypatch.delenv("COMMANDCODE_FAST_MODEL", raising=False)
-    monkeypatch.delenv("COMMANDCODE_SPECIALIST_MODEL", raising=False)
+    monkeypatch.delenv("COMMANDCODE_MODEL", raising=False)
+    monkeypatch.delenv("COMMANDCODE_MODEL_FALLBACK", raising=False)
     settings = config.carregar_config()
-    assert settings.commandcode_fast_model == "Qwen/Qwen3.8-Flash"
-    assert settings.commandcode_specialist_model == "Qwen/Qwen3.8-27B"
+    assert settings.commandcode_model == "xiaomi/mimo-v2.6-flash"
+    assert settings.commandcode_model_fallback == "xiaomi/mimo-v2.6-pro"

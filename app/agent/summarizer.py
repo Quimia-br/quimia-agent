@@ -4,7 +4,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.agent.base import StructuredAgent
-from app.agent.llms import ModelProfile, create_chat_model
+from app.agent.llms import create_chat_model
 from app.agent.prompts import RESUMO_SESSAO_PROMPT
 
 MAX_SUMMARY_CHARS = 1200
@@ -22,7 +22,7 @@ class SessionSummarizer:
             system_prompt=RESUMO_SESSAO_PROMPT,
             human_template="TURNOS_DA_CONVERSA:\n{turnos}",
             output_schema=SessionSummary,
-            model=model or create_chat_model(ModelProfile.FAST),
+            model=model or create_chat_model(),
         )
 
     async def ainvoke(self, turns: list[dict[str, str]]) -> SessionSummary:

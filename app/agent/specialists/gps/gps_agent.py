@@ -1,6 +1,6 @@
 from app.agent.contracts import GpsResult
 from app.agent.base import StructuredAgent
-from app.agent.llms import ModelProfile, create_chat_model
+from app.agent.llms import create_chat_model
 from app.agent.prompts import GPS_PROMPT_COMPLETO
 
 GPS_RESPONSE = (
@@ -20,7 +20,7 @@ class GpsAgent:
                             "OBJETIVO_DA_ROTA:\n{objetivo}\n\n"
                             "RESUMO_DA_CONVERSA:\n{resumo_conversa}"),
             output_schema=GpsResult,
-            model=model if model is not None else create_chat_model(ModelProfile.FAST),
+            model=model if model is not None else create_chat_model(),
         )
 
     def invoke(self, pergunta_original, objetivo, contexto_confirmado=None, resumo_conversa=None):

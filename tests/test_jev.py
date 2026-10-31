@@ -1,6 +1,6 @@
-import io
 import json
 
+import httpx
 import pytest
 from pydantic import ValidationError
 
@@ -18,22 +18,22 @@ def answers(choice="apoiada", support=0.9, risk=0.0, leak=0.0, proximity=0.0):
     })
 
 
-def test_jev_request_uses_systemone_and_pinned_model(monkeypatch):
+def test_jev_request_uses_systemone_and_pinned_model():
     received = {}
 
-    def fake_urlopen(request, timeout):
-        received["url"] = request.full_url
-        received["authorization"] = request.get_header("Authorization")
-        received["timeout"] = timeout
-        received["body"] = json.loads(request.data)
-        return io.BytesIO(json.dumps({"answers": answers().model_dump()}).encode())
+    def handle(request):
+        received["url"] = str(request.url)
+        received["authorization"] = request.headers["Authorization"]
+        received["user_agent"] = request.headers["User-Agent"]
+        received["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"answers": answers().model_dump()})
 
-    monkeypatch.setattr(jev, "urlopen", fake_urlopen)
-    client = jev.JevClient(api_key="test-key")
+    client = jev.JevClient(api_key="test-key", transport=httpx.MockTransport(handle))
     result = client.decide({"pergunta": "Pergunta", "resposta": "Resposta"})
 
     assert received["url"] == "https://api.commandcode.ai/provider/v1/systemone"
     assert received["authorization"] == "Bearer test-key"
+    assert received["user_agent"] == "quimia-agent/1.0"
     assert received["body"]["model"] == "typesafe/jev-1.14.0"
     assert received["body"]["questions"]["apoio"]["type"] == "choice"
     assert received["body"]["questions"]["apoio_total"]["type"] == "noul"

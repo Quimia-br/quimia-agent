@@ -102,8 +102,7 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
                 return await agent.ainvoke_with_evidence(state["pergunta"], route.objetivo, context, state["contexto"])
             except Exception:
                 logger.exception("Falha no especialista %s", route.agente)
-                return SpecialistResult(dominio=route.agente, intencao="consultar",
-                                        resposta="Não foi possível consultar essas informações agora."), []
+                raise
 
         while pending:
             ready = [route for route in pending if all(key in completed for key in route.depende_de)]

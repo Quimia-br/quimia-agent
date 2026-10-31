@@ -3,7 +3,7 @@ from app.agent.specialists.quimico.quimico_tools import QUIMICO_TOOLS
 from typing import Any
 
 from app.agent.contracts import QuimicoResult
-from app.agent.llms import ModelProfile, create_chat_model
+from app.agent.llms import create_chat_model
 from app.agent.prompts import QUIMICO_PROMPT_COMPLETO
 
 
@@ -12,7 +12,7 @@ class ChemicalAgent:
 
     def __init__(self, model: Any | None = None) -> None:
         tools = QUIMICO_TOOLS
-        selected_model = model or create_chat_model(ModelProfile.SPECIALIST)
+        selected_model = model or create_chat_model()
         self._agent = ToolAgent(selected_model, tools, QUIMICO_PROMPT_COMPLETO, QuimicoResult)
 
     def invoke(

@@ -103,9 +103,11 @@ Como a API aceita credenciais, o curinga `*` não é permitido.
 ### Modelos dos agentes
 
 Os agentes de chat usam a Provider API da CommandCode com `COMMANDCODE_API_KEY`
-e retornam contratos Pydantic. Por padrão, os agentes rápidos usam
-`Qwen/Qwen3.8-Flash` e os especialistas usam `Qwen/Qwen3.8-27B`. Configure
-`COMMANDCODE_FAST_MODEL` e `COMMANDCODE_SPECIALIST_MODEL` para trocar esses modelos.
+e retornam contratos Pydantic. Todos usam `COMMANDCODE_MODEL` (padrão:
+`xiaomi/mimo-v2.6-flash`) com `COMMANDCODE_MODEL_FALLBACK` (padrão:
+`xiaomi/mimo-v2.6-pro`) quando a chamada principal falha. O fallback usa a mesma
+chave e também se aplica às chamadas com ferramentas. A URL raiz
+`https://api.commandcode.ai/` é normalizada para `/provider/v1`.
 O juiz usa `typesafe/jev-1.14.0` no endpoint `/systemone`, com a mesma chave.
 O FAQ ainda usa `GEMINI_API_KEY` para embeddings, pois a Provider API documentada
 não oferece um endpoint de embeddings.
