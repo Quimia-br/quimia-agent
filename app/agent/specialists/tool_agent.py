@@ -1,6 +1,8 @@
 """Executa chamadas de tools antes da síntese estruturada, com limite de passos."""
 import asyncio
+import contextvars
 import json
+from concurrent.futures import ThreadPoolExecutor
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from app.agent.contracts import Evidence
 
@@ -12,6 +14,23 @@ class ToolAgent:
         self.prompt = prompt
         self.schema = output_schema
         self.max_steps = max_steps
+
+    def _run_tool(self, call):
+        selected = self.tools.get(call['name'])
+        try:
+            return selected.invoke(call['args']) if selected else {
+                'status': 'error', 'message': 'Tool não autorizada.'}
+        except Exception:
+            return {'status': 'error', 'message': 'Parâmetros inválidos ou consulta indisponível.'}
+
+    def _run_tools(self, calls):
+        """Resultados na ordem das chamadas. As de uma mesma rodada são independentes e rodam juntas: cada uma é uma
+        ida ao banco, e em série o tempo delas se somava."""
+        if len(calls) == 1:
+            return [self._run_tool(calls[0])]
+        with ThreadPoolExecutor(max_workers=min(len(calls), 4)) as pool:
+            futures = [pool.submit(contextvars.copy_context().run, self._run_tool, call) for call in calls]
+            return [future.result() for future in futures]
 
     def invoke(self, payload):
         result, _ = self.invoke_with_evidence(payload)
@@ -29,13 +48,7 @@ class ToolAgent:
             calls = response.tool_calls
             if not calls:
                 break
-            for call in calls:
-                selected = self.tools.get(call['name'])
-                try:
-                    result = selected.invoke(call['args']) if selected else {
-                        'status': 'error', 'message': 'Tool não autorizada.'}
-                except Exception:
-                    result = {'status': 'error', 'message': 'Parâmetros inválidos ou consulta indisponível.'}
+            for call, result in zip(calls, self._run_tools(calls)):
                 results.append({'tool': call['name'], 'resultado': result})
                 messages.append(ToolMessage(content=json.dumps(result, ensure_ascii=False), tool_call_id=call['id']))
         # Não aceita uma resposta intermediária como resposta final ou evidência.

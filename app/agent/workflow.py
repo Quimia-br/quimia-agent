@@ -1,4 +1,4 @@
-"""Grafo do Kemi: entrada -> orquestrador -> especialistas -> juiz -> saída -> entrega."""
+"""Grafo do Kemi: entrada (guardrail e orquestrador juntos) -> especialistas -> juiz -> saída -> entrega."""
 import asyncio
 import json
 import logging
@@ -7,7 +7,7 @@ from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from app.agent.contracts import Evidence, SpecialistResult, SynthesisResult
+from app.agent.contracts import Evidence, GpsResult, SpecialistResult, SynthesisResult
 from app.agent.orchestrator import OrchestratorAgent
 from app.agent.synthesizer import SynthesizerAgent
 from app.agent.judge import JudgeAgent
@@ -54,7 +54,7 @@ def specialist_factory(name, user_id):
 def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
                 input_guardrail=None, output_guardrail=None, factory=specialist_factory):
     @stage("guardrail_entrada")
-    async def check_input(state):
+    async def classify_input(state):
         try:
             decision = await (input_guardrail or InputGuardrail()).ainvoke(state["pergunta"])
             allowed = decision.permitido
@@ -64,25 +64,45 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
         except Exception:
             logger.exception("Falha no guardrail de entrada")
             raise
-        return {"entrada_permitida": allowed,
-                "agentes_acionados": [*state.get("agentes_acionados", []), "guardrail_entrada"],
-                **({} if allowed else {"resposta": INPUT_SAFE_RESPONSE})}
-
-    def route_input(state):
-        return "orquestrador" if state["entrada_permitida"] else "encerrar"
+        return allowed
 
     @stage("orquestrador")
-    async def orchestrate(state):
+    async def make_plan(state):
         plan = await (orchestrator or OrchestratorAgent()).ainvoke(state["pergunta"], state["contexto"])
         if plan.pergunta_original != state["pergunta"]:
             raise ValueError("O orquestrador alterou a pergunta original.")
         mark(route=",".join(route.agente for route in plan.rotas) or plan.status)
         if not plan.rotas:
             mark(outcome=plan.status)
-        return {"plano": plan,
-                "agentes_acionados": [*state["agentes_acionados"], "orquestrador"]}
+        return plan
 
-    def route_plan(state):
+    async def cancel(task):
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    async def entry(state):
+        """Guardrail de entrada e orquestrador ao mesmo tempo.
+
+        O orquestrador só planeja: não consulta dados nem chama ferramentas, então o plano de uma mensagem recusada
+        é simplesmente descartado. Nada com acesso a dados roda antes do veredito do guardrail.
+        """
+        planning = asyncio.create_task(make_plan(state))
+        try:
+            allowed = await classify_input(state)
+        except BaseException:
+            await cancel(planning)
+            raise
+        if not allowed:
+            await cancel(planning)
+            return {"entrada_permitida": False, "resposta": INPUT_SAFE_RESPONSE,
+                    "agentes_acionados": [*state.get("agentes_acionados", []), "guardrail_entrada"]}
+        plan = await planning
+        return {"entrada_permitida": True, "plano": plan,
+                "agentes_acionados": [*state.get("agentes_acionados", []), "guardrail_entrada", "orquestrador"]}
+
+    def route_entry(state):
+        if not state["entrada_permitida"]:
+            return "encerrar"
         return "especialistas" if state["plano"].rotas else "resposta_orquestrador"
 
     def direct_answer(state):
@@ -102,13 +122,17 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
                                         resposta="É necessário esclarecer a identificação antes desta consulta.",
                                         esclarecer=next(item.esclarecer for item in dependencies if item.esclarecer)), []
             try:
+                if route.agente == "gps":
+                    # A orientação de descarte é um texto padrão e conservador: entregue como está, ela é sustentada
+                    # pela própria evidência. Reescrita por IA, o juiz a bloqueava (a IA acrescentava detalhes do
+                    # produto que a evidência não traz) e o usuário recebia só a recusa genérica.
+                    return (GpsResult(dominio="gps", intencao="consultar", resposta=GPS_RESPONSE),
+                            [Evidence(source_id="gps:orientation", title="Orientação padrão de descarte",
+                                      content=GPS_RESPONSE)])
                 agent = factory(route.agente, state["user_id"])
                 if route.agente == "faq":
                     return await agent.ainvoke_with_evidence(state["pergunta"], route.objetivo)
                 context = json.dumps([item.model_dump() for item in dependencies], ensure_ascii=False)
-                if route.agente == "gps":
-                    result = await agent.ainvoke(state["pergunta"], route.objetivo)
-                    return result, [Evidence(source_id="gps:orientation", title="Orientação padrão de descarte", content=GPS_RESPONSE)]
                 return await agent.ainvoke_with_evidence(state["pergunta"], route.objetivo, context, state["contexto"])
             except Exception:
                 logger.exception("Falha no especialista %s", route.agente)
@@ -140,13 +164,16 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
 
     @stage("juiz")
     async def evaluate(state):
-        verdicts = []
-        for route, result in zip(state["plano"].rotas, state["resultados"]):
+        judge_agent = judge or JudgeAgent()
+
+        async def judge_route(route, result):
             scoped_evidence = [source for source in state["evidencias"]
                                if source.source_id.startswith(f"{route.id}:")]
             answer = SynthesisResult(resposta=result.resposta, esclarecer=result.esclarecer)
-            verdicts.append(await (judge or JudgeAgent()).ainvoke(
-                state["pergunta"], answer, [result], scoped_evidence))
+            return await judge_agent.ainvoke(state["pergunta"], answer, [result], scoped_evidence)
+
+        verdicts = list(await asyncio.gather(
+            *(judge_route(route, result) for route, result in zip(state["plano"].rotas, state["resultados"]))))
         if all(verdict.aprovado for verdict in verdicts):
             trace = current.get()
             if trace and trace.outcome == "desconhecido":
@@ -187,17 +214,15 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
                 "agentes_acionados": [*state["agentes_acionados"], "sintetizador"]}
 
     graph = StateGraph(ChatState)
-    for name, node in [("guardrail_entrada", check_input), ("orquestrador", orchestrate),
+    for name, node in [("entrada", entry),
                        ("resposta_orquestrador", direct_answer), ("especialistas", specialists),
                        ("juiz", evaluate), ("guardrail_saida", check_output),
                        ("sintetizador", synthesize)]:
         graph.add_node(name, node)
-        
-    graph.add_edge(START, "guardrail_entrada")
-    graph.add_conditional_edges("guardrail_entrada", route_input,
-                                {"orquestrador": "orquestrador", "encerrar": END})
-    graph.add_conditional_edges("orquestrador", route_plan,
-                                {"especialistas": "especialistas",
+
+    graph.add_edge(START, "entrada")
+    graph.add_conditional_edges("entrada", route_entry,
+                                {"encerrar": END, "especialistas": "especialistas",
                                  "resposta_orquestrador": "resposta_orquestrador"})
     graph.add_edge("especialistas", "juiz")
     graph.add_edge("juiz", "guardrail_saida")

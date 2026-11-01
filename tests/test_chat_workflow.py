@@ -3,6 +3,7 @@ import json
 from uuid import uuid4
 
 import pytest
+from fastapi import BackgroundTasks
 from fastapi.testclient import TestClient
 from app.agent.contracts import OrchestratorResult, RoutePlan, JudgeResult, SynthesisResult, SpecialistResult, Evidence
 from app.agent.workflow import build_graph, SAFE_RESPONSE, ChatRunResult
@@ -279,7 +280,9 @@ def test_chat_route_passes_same_session_history_to_graph_and_saves_reply(monkeyp
     monkeypatch.setattr(routes, "load_chat_context", load)
     monkeypatch.setattr(routes, "run_chat", run)
     monkeypatch.setattr(routes, "save_turn", save)
-    response = asyncio.run(routes.conversar(ChatRequest(user_id=owner, session_id="s1", pergunta="E ele?")))
+    background = BackgroundTasks()
+    response = asyncio.run(routes.conversar(ChatRequest(user_id=owner, session_id="s1", pergunta="E ele?"), background))
+    asyncio.run(background())  # a gravação do turno roda depois da resposta
     assert response.resposta == "Resposta"
     assert response.agentes_acionados == ["guardrail_entrada", "orquestrador"]
     assert events == [
