@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import TypedDict
 
@@ -22,6 +23,31 @@ from app.observability.callbacks import MetricsCallback
 
 logger = logging.getLogger(__name__)
 SAFE_RESPONSE = "Não consegui confirmar uma resposta segura com as informações disponíveis no app. Consulte as orientações do fabricante e não misture produtos sem confirmação."
+
+
+PARTE_NAO_CONFIRMADA = ("Não consegui confirmar o restante da sua pergunta com as informações disponíveis no app. "
+                        "Consulte as orientações do fabricante e não misture produtos sem confirmação.")
+FIM_DE_FRASE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _chave_da_frase(frase):
+    return " ".join(re.findall(r"\w+", frase.lower()))
+
+
+def juntar_partes(partes):
+    """Une as respostas das rotas sem repetir frases: um especialista que depende do outro costuma recomeçar pelo
+    que o primeiro acabou de dizer. Só frases idênticas saem; nada é reescrito nem acrescentado."""
+    vistas, resultado = set(), []
+    for parte in partes:
+        novas = []
+        for frase in FIM_DE_FRASE.split(parte.strip()):
+            chave = _chave_da_frase(frase)
+            if chave and chave not in vistas:
+                vistas.add(chave)
+                novas.append(frase)
+        if novas:
+            resultado.append(" ".join(novas))
+    return "\n\n".join(resultado)
 
 
 @dataclass(frozen=True)
@@ -174,17 +200,22 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
 
         verdicts = list(await asyncio.gather(
             *(judge_route(route, result) for route, result in zip(state["plano"].rotas, state["resultados"]))))
-        if all(verdict.aprovado for verdict in verdicts):
+        approved = [result for result, verdict in zip(state["resultados"], verdicts) if verdict.aprovado]
+        if approved:
             trace = current.get()
             if trace and trace.outcome == "desconhecido":
-                mark(outcome="esclarecer" if any(r.esclarecer for r in state["resultados"]) else "respondido")
+                mark(outcome="esclarecer" if any(r.esclarecer for r in approved) else "respondido")
             parts = []
-            for result in state["resultados"]:
+            for result in approved:
                 part = result.resposta
                 if result.esclarecer and result.esclarecer not in part:
                     part += " " + result.esclarecer
                 parts.append(part)
-            candidate = SynthesisResult(resposta="\n\n".join(parts))
+            if len(approved) < len(verdicts):
+                # A rota não aprovada sai; as aprovadas continuam valendo, com o aviso de que faltou uma parte.
+                mark(outcome="parcial")
+                parts.append(PARTE_NAO_CONFIRMADA)
+            candidate = SynthesisResult(resposta=juntar_partes(parts))
         else:
             mark(outcome="nao_aprovado")
             candidate = SynthesisResult(resposta=SAFE_RESPONSE)

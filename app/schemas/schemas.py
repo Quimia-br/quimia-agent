@@ -61,3 +61,13 @@ class CloseSessionResponse(BaseModel):
         ...,
         description="resumida: resumo novo salvo; ja_resumida: a sessão já tinha resumo; sem_turnos: nada a resumir."
     )
+
+
+class CandidatoRotulo(BaseModel):
+    nome: str = Field(..., description="Nome do produto lido (ou o do catálogo, quando a leitura bate com ele).")
+    marca: str | None = Field(None, description="Marca; nulo quando não foi lida.")
+    cod_barras: str | None = Field(None, description="Dígitos do código de barras; nulo quando não foi lido.")
+
+
+class BuscaPorImagemResponse(BaseModel):
+    candidatos: list[CandidatoRotulo] = Field(..., description="Do mais provável ao menos; vazio sem rótulo legível.")

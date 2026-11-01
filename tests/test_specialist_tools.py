@@ -98,3 +98,15 @@ def test_tool_agent_executes_queries_before_structured_answer():
 
     result = ToolAgent(Model(), [consulta], "Prompt", QuimicoResult).invoke({"pergunta_original": "Qual produto?"})
     assert result.resposta == "Produto confirmado"
+
+
+def test_orientacao_geral_de_emergencia_nao_consulta_o_banco_e_cobre_as_vias():
+    from app.agent.specialists.quimico.quimico_tools import EMERGENCIA_POR_VIA, orientacao_geral_de_emergencia
+
+    todas = orientacao_geral_de_emergencia.invoke({})
+    olhos = orientacao_geral_de_emergencia.invoke({"rota_exposicao": "olhos"})
+
+    assert todas["status"] == "ok" and set(todas["orientacao_geral"]) == set(EMERGENCIA_POR_VIA)
+    assert list(olhos["orientacao_geral"]) == ["olhos"] and "15 minutos" in olhos["orientacao_geral"]["olhos"]
+    assert "192" in olhos["emergencia"]
+    assert orientacao_geral_de_emergencia.invoke({"rota_exposicao": "ouvido"})["status"] == "error"

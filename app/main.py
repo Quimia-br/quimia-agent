@@ -11,6 +11,7 @@ from app.database.mongo import close_mongo
 from app.routes.health_routes import router as health_router
 from app.routes.chat_routes import router as chat_router
 from app.routes.monitor_routes import router as monitor_router
+from app.routes.produto_routes import router as produto_router
 from app.observability.telemetry import observe_request
 from app.observability import storage
 
@@ -87,6 +88,7 @@ def create_app() -> FastAPI:
     application.include_router(health_router)
     application.include_router(chat_router)
     application.include_router(monitor_router)
+    application.include_router(produto_router)
     application.middleware("http")(observe_request)
 
     @application.get("/")

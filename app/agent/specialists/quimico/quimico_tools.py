@@ -83,6 +83,35 @@ def consultar_primeiros_socorros(id_produto: int, rota_exposicao: str | None = N
         (positive_id(id_produto), rota_exposicao, rota_exposicao))
 
 
+# Orientação padrão e conservadora para qualquer produto de limpeza, até o produto ser identificado. Texto a ser
+# validado pela área de segurança do Quimia; o que a FDS do produto disser sobre primeiros socorros prevalece.
+EMERGENCIA_GERAL = (
+    "Em caso de emergência, ligue para o SAMU (192) ou para o Disque-Intoxicação (0800 722 6001) e tenha a "
+    "embalagem do produto em mãos."
+)
+EMERGENCIA_POR_VIA = {
+    "olhos": "Lave o olho com água corrente limpa por pelo menos 15 minutos, mantendo as pálpebras abertas, "
+             "sem esfregar. Retire as lentes de contato se for fácil. Procure atendimento médico.",
+    "pele": "Retire a roupa e os acessórios contaminados e lave a pele com bastante água corrente por pelo menos "
+            "15 minutos. Procure atendimento médico se houver dor, vermelhidão persistente ou bolhas.",
+    "inalacao": "Vá para um local arejado, ao ar livre. Se houver tosse, falta de ar ou mal-estar, procure "
+                "atendimento médico.",
+    "ingestao": "Não provoque vômito. Enxágue a boca com água, sem engolir, e procure atendimento médico "
+                "imediatamente.",
+}
+
+
+@tool
+def orientacao_geral_de_emergencia(rota_exposicao: str | None = None) -> dict:
+    """Primeiros socorros genéricos para contato com produto de limpeza, para quando o produto não foi identificado.
+    Não substitui a FDS do produto nem o atendimento médico."""
+    if rota_exposicao not in (None, *EMERGENCIA_POR_VIA):
+        return {"status": "error", "message": "Via de exposição inválida."}
+    vias = {rota_exposicao: EMERGENCIA_POR_VIA[rota_exposicao]} if rota_exposicao else EMERGENCIA_POR_VIA
+    return {"status": "ok", "encontrado": True, "orientacao_geral": vias, "emergencia": EMERGENCIA_GERAL,
+            "aviso": "Orientação geral, não específica do produto. As instruções da FDS e do rótulo prevalecem."}
+
+
 QUIMICO_TOOLS = [buscar_produto, consultar_composicao_produto,
                  verificar_compatibilidade_produtos, consultar_incompatibilidades_produto,
-                 consultar_primeiros_socorros]
+                 consultar_primeiros_socorros, orientacao_geral_de_emergencia]
