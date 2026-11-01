@@ -32,5 +32,5 @@ def test_commandcode_defaults_match_provider_model_ids(monkeypatch):
     monkeypatch.delenv("COMMANDCODE_MODEL", raising=False)
     monkeypatch.delenv("COMMANDCODE_MODEL_FALLBACK", raising=False)
     settings = config.carregar_config()
-    assert settings.commandcode_model == "xiaomi/mimo-v2.6-flash"
-    assert settings.commandcode_model_fallback == "xiaomi/mimo-v2.6-pro"
+    assert settings.commandcode_model == "z-ai/glm-5.3-flash"
+    assert settings.commandcode_model_fallback == "minimax/minimax-m3.1-flash"

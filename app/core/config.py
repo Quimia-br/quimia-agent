@@ -35,6 +35,9 @@ class AppConfig(BaseModel):
     commandcode_model_fallback: str
     commandcode_timeout_seconds: float
     commandcode_max_retries: int
+    chat_budget_seconds: float
+    rotulo_budget_seconds: float
+    commandcode_reasoning_effort: str | None
     gemini_embedding_model: str
     embedding_dimension: int
     faq_collection: str
@@ -68,12 +71,18 @@ def carregar_config() -> AppConfig:
         cors_origins=_parse_cors_origins(
             os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS)
         ),
-        commandcode_model=os.getenv("COMMANDCODE_MODEL", "xiaomi/mimo-v2.6-flash"),
+        commandcode_model=os.getenv("COMMANDCODE_MODEL", "z-ai/glm-5.3-flash"),
         commandcode_model_fallback=os.getenv(
-            "COMMANDCODE_MODEL_FALLBACK", "xiaomi/mimo-v2.6-pro"
+            "COMMANDCODE_MODEL_FALLBACK", "minimax/minimax-m3.1-flash"
         ),
-        commandcode_timeout_seconds=os.getenv("COMMANDCODE_TIMEOUT_SECONDS", "30"),
-        commandcode_max_retries=os.getenv("COMMANDCODE_MAX_RETRIES", "2"),
+        commandcode_timeout_seconds=os.getenv("COMMANDCODE_TIMEOUT_SECONDS", "20"),
+        commandcode_max_retries=os.getenv("COMMANDCODE_MAX_RETRIES", "1"),
+        # A hospedagem corta a conexão em ~30 s e serve uma página HTML com status 200: o /chat responde antes disso.
+        chat_budget_seconds=os.getenv("CHAT_BUDGET_SECONDS", "25"),
+        # A API espera 30 s pela leitura do rótulo; o agente responde antes, com 504 em JSON.
+        rotulo_budget_seconds=os.getenv("ROTULO_BUDGET_SECONDS", "22"),
+        # Raciocínio curto: o modelo gastava a maior parte dos tokens de saída "pensando". Vazio desliga o parâmetro.
+        commandcode_reasoning_effort=os.getenv("COMMANDCODE_REASONING_EFFORT", "low").strip() or None,
         gemini_embedding_model=os.getenv(
             "GEMINI_EMBEDDING_MODEL", "gemini-embedding-2"
         ),

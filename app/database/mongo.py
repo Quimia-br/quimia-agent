@@ -1,3 +1,5 @@
+import os
+
 from pymongo import MongoClient
 from app.core.config import MONGODB_URI
 
@@ -12,7 +14,8 @@ def get_mongo():
         raise RuntimeError("MONGODB_URI não está configurada. Consulte GET /health.")
     if mongo is None:
         mongo = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5_000)
-    return mongo["quimia"]
+    # MONGODB_DB separa os dados de teste dos de produção quando o mesmo cluster é usado.
+    return mongo[os.getenv("MONGODB_DB", "quimia")]
 
 
 def close_mongo() -> None:

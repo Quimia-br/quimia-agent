@@ -5,6 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
+import psycopg2
 from psycopg2.extras import RealDictCursor
 
 from app.database.postgres import get_pg
@@ -20,14 +21,22 @@ def serialize(value):
     raise TypeError(type(value).__name__)
 
 
+def _executar(sql, params):
+    with get_pg() as conn:
+        conn.set_session(readonly=True)
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("SET LOCAL statement_timeout = '5s'")
+            cursor.execute(sql, params)
+            return [dict(row) for row in cursor.fetchall()]
+
+
 def query(sql, params=()):
     try:
-        with get_pg() as conn:
-            conn.set_session(readonly=True)
-            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                cursor.execute("SET LOCAL statement_timeout = '5s'")
-                cursor.execute(sql, params)
-                rows = [dict(row) for row in cursor.fetchall()]
+        try:
+            rows = _executar(sql, params)
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            # Conexão do pool que o servidor fechou por ociosidade: a quebrada é descartada e a consulta repetida.
+            rows = _executar(sql, params)
         return {"status": "ok", "dados": json.loads(json.dumps(rows, default=serialize)),
                 "encontrado": bool(rows)}
     except Exception:
