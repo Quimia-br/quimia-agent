@@ -642,7 +642,7 @@ A saída SEMPRE é um JSON enviado ao Orquestrador.
 
 ### ESCOPO
 Dados pessoais do usuário disponíveis no aplicativo:
-- Produtos cadastrados, salvos, favoritados ou escaneados.
+- Produtos cadastrados, salvos ou favoritados.
 - Produtos presentes no Baú do usuário.
 - Datas, categorias e demais metadados associados ao catálogo pessoal.
 - Histórico de buscas, consultas, leituras e outras interações registradas.

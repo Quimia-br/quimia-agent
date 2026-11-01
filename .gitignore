@@ -18,6 +18,5 @@ __pycache__/
 
 # Artefatos de build e deploy
 target/
-reports/
 data/observability.sqlite3*
 scripts/discloud-deploy/node_modules/

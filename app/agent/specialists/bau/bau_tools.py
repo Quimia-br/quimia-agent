@@ -17,7 +17,7 @@ def create_bau_tools(user_id: str):
     @tool
     def listar_produtos_estante(id_estante: int, limite: int = 20) -> dict:
         """Lista produtos de uma estante pertencente ao usuário autenticado."""
-        return query("""SELECT p.id, p.nome, m.nome AS marca, p.tipo_produto
+        return query("""SELECT p.id, p.nome, m.nome AS marca, p.tipo_produto, ep.favorito
             FROM estante_produto ep JOIN estante e ON e.id = ep.id_estante
             JOIN produto p ON p.id = ep.id_produto JOIN marca m ON m.id = p.id_marca
             WHERE e.id_usuario = %s AND ep.id_usuario = %s AND e.id = %s
@@ -28,10 +28,10 @@ def create_bau_tools(user_id: str):
         """Lista produtos pessoais associados a um cômodo do usuário pelo nome."""
         if not nome_comodo.strip():
             return {"status": "error", "message": "Informe o nome do cômodo."}
-        return query("""SELECT DISTINCT p.id, p.nome, m.nome AS marca, c.nome AS comodo
-            FROM comodo c JOIN produto p ON p.id_comodo = c.id
+        return query("""SELECT DISTINCT p.id, p.nome, m.nome AS marca, c.nome AS comodo, ep.favorito
+            FROM comodo c JOIN estante_produto ep ON ep.id_comodo = c.id
+            JOIN produto p ON p.id = ep.id_produto
             JOIN marca m ON m.id = p.id_marca
-            JOIN estante_produto ep ON ep.id_produto = p.id
             JOIN estante e ON e.id = ep.id_estante
             WHERE c.id_usuario = %s AND ep.id_usuario = %s AND e.id_usuario = %s
             AND c.nome ILIKE %s ORDER BY p.nome, p.id LIMIT %s""",

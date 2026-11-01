@@ -23,6 +23,50 @@ def test_bau_rejects_invalid_identity():
         bau_tools.create_bau_tools("invalid")
 
 
+def test_bau_room_and_shelf_queries_include_favorites(monkeypatch):
+    owner = str(uuid4())
+    queries = []
+    monkeypatch.setattr(bau_tools, "query", lambda sql, params: queries.append((sql, params)) or {"status": "ok", "dados": []})
+    tools = {item.name: item for item in bau_tools.create_bau_tools(owner)}
+
+    tools["listar_produtos_estante"].invoke({"id_estante": 12})
+    tools["listar_produtos_por_comodo"].invoke({"nome_comodo": "banheiro"})
+
+    assert "ep.favorito" in queries[0][0]
+    room_sql, room_params = queries[1]
+    assert "ep.id_comodo = c.id" in room_sql
+    assert "JOIN produto p ON p.id_comodo" not in room_sql
+    assert "ep.favorito" in room_sql
+    assert room_params[:3] == (owner, owner, owner)
+
+
+def test_composition_uses_pending_name_and_latest_fds(monkeypatch):
+    queries = []
+    monkeypatch.setattr(quimico_tools, "query", lambda sql, params: queries.append((sql, params)) or {"status": "ok", "dados": []})
+
+    quimico_tools.consultar_composicao_produto.invoke({"id_produto": 7})
+
+    sql, params = queries[0]
+    assert params == (7,)
+    assert "sinonimo_pendente" in sql
+    assert "pend.termo_bruto" in sql
+    assert "bruto.item ->> 'nome'" in sql
+    assert "ROW_NUMBER() OVER" in sql
+    assert "ORDER BY data_atualizacao DESC NULLS LAST, id DESC LIMIT 1" in sql
+
+
+def test_fds_detail_queries_use_latest_active_version(monkeypatch):
+    queries = []
+    monkeypatch.setattr(quimico_tools, "query", lambda sql, params: queries.append((sql, params)) or {"status": "ok", "dados": []})
+
+    quimico_tools.consultar_incompatibilidades_produto.invoke({"id_produto": 7})
+    quimico_tools.consultar_primeiros_socorros.invoke({"id_produto": 7})
+
+    assert len(queries) == 2
+    assert all("ORDER BY data_atualizacao DESC NULLS LAST, id DESC LIMIT 1" in sql
+               for sql, _ in queries)
+
+
 def test_match_without_incompatibility_rule_does_not_confirm_compatibility(monkeypatch):
     captured = []
     monkeypatch.setattr(quimico_tools, "query", lambda sql, params: captured.append((sql, params)) or {"status": "ok", "dados": [{"resultado": "compativel"}]})
