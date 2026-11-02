@@ -14,17 +14,17 @@ def create_bau_tools(user_id: str):
     @tool
     def listar_estantes_usuario(limite: int = 20) -> dict:
         """Lista as estantes do usuário autenticado."""
-        return query("SELECT id, nome, criado_em FROM estante WHERE id_usuario = %s ORDER BY id LIMIT %s",
+        return query("SELECT nome, criado_em FROM estante WHERE id_usuario = %s ORDER BY id LIMIT %s",
                      (owner, limit_rows(limite)))
 
     @tool
-    def listar_produtos_estante(id_estante: int, limite: int = 20) -> dict:
-        """Lista produtos de uma estante pertencente ao usuário autenticado."""
+    def listar_produtos_estante(limite: int = 20) -> dict:
+        """Lista produtos da estante pertencente ao usuário autenticado."""
         return query("""SELECT p.id, p.nome, m.nome AS marca, p.tipo_produto, ep.favorito
             FROM estante_produto ep JOIN estante e ON e.id = ep.id_estante
             JOIN produto p ON p.id = ep.id_produto JOIN marca m ON m.id = p.id_marca
-            WHERE e.id_usuario = %s AND ep.id_usuario = %s AND e.id = %s
-            ORDER BY p.nome, p.id LIMIT %s""", (owner, owner, positive_id(id_estante), limit_rows(limite)))
+            WHERE e.id_usuario = %s AND ep.id_usuario = %s
+            ORDER BY p.nome, p.id LIMIT %s""", (owner, owner, limit_rows(limite)))
 
     @tool
     def listar_produtos_por_comodo(nome_comodo: str, limite: int = 20) -> dict:
@@ -38,7 +38,7 @@ def create_bau_tools(user_id: str):
             JOIN estante e ON e.id = ep.id_estante
             WHERE c.id_usuario = %s AND ep.id_usuario = %s AND e.id_usuario = %s
             AND c.nome ILIKE %s ORDER BY p.nome, p.id LIMIT %s""",
-            (owner, owner, owner, nome_comodo.strip(), limit_rows(limite)))
+            (owner, owner, owner, f"%{nome_comodo.strip()}%", limit_rows(limite)))
 
     def history(table, columns, date_type, inicio, fim, limite):
         def boundary(value):
