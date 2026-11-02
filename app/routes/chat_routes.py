@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from app.agent.workflow import run_chat
-from app.agent.summarizer import SessionSummarizer
-from app.database.chat_history import load_chat_context
-from app.database.chat_summaries import has_summary, load_session_turns, save_summary
+from app.memory.summarizer import SessionSummarizer
+from app.memory.chat_history import load_chat_context
+from app.memory.chat_summaries import has_summary, load_session_turns, save_summary
 from app.database.mongo import get_mongo
 from app.schemas.schemas import ChatRequest, ChatResponse, CloseSessionRequest, CloseSessionResponse
 from app.core.config import carregar_config
@@ -50,7 +50,7 @@ async def conversar(request: ChatRequest, background: BackgroundTasks) -> ChatRe
         async with asyncio.timeout(carregar_config().chat_budget_seconds):
             with span("mongodb_history"):
                 context = await asyncio.to_thread(load_chat_context, user_id, request.session_id)
-            result = await run_chat(request.pergunta, user_id, context)
+            result = await run_chat(request.pergunta, user_id, context, request.session_id)
         background.add_task(_salvar_turno, user_id, request.session_id, request.pergunta, result.resposta)
         return ChatResponse(resposta=result.resposta, agentes_acionados=result.agentes_acionados)
     except asyncio.TimeoutError:

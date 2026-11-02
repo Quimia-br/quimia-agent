@@ -230,7 +230,7 @@ def _config(orcamento):
 
 
 def test_chat_acima_do_orcamento_responde_504_em_json(monkeypatch):
-    async def lento(pergunta, usuario, contexto):
+    async def lento(pergunta, usuario, contexto, sessao):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(routes, "load_chat_context", lambda usuario, sessao: "Não fornecido.")
@@ -253,7 +253,7 @@ def test_chat_acima_do_orcamento_responde_504_em_json(monkeypatch):
 def test_turno_e_gravado_depois_da_resposta_e_falha_de_gravacao_nao_afeta_o_usuario(monkeypatch):
     ordem = []
 
-    async def rapido(pergunta, usuario, contexto):
+    async def rapido(pergunta, usuario, contexto, sessao):
         ordem.append("run")
         return ChatRunResult("Resposta", ["orquestrador"])
 
@@ -276,7 +276,7 @@ def test_turno_e_gravado_depois_da_resposta_e_falha_de_gravacao_nao_afeta_o_usua
 
 
 def test_erro_interno_continua_503_em_json(monkeypatch):
-    async def quebrado(pergunta, usuario, contexto):
+    async def quebrado(pergunta, usuario, contexto, sessao):
         raise RuntimeError("segredo interno")
 
     monkeypatch.setattr(routes, "load_chat_context", lambda usuario, sessao: "Não fornecido.")

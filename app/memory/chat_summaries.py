@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from app.database.chat_history import MAX_ANSWER_CHARS, MAX_QUESTION_CHARS
+from app.memory.chat_history import MAX_ANSWER_CHARS, MAX_QUESTION_CHARS
 from app.database.mongo import get_mongo
 
 MAX_SUMMARY_TURNS = 40

@@ -31,6 +31,7 @@ class FaqAgent:
             human_template=(
                 "PERGUNTA_ORIGINAL:\n{pergunta_original}\n\n"
                 "OBJETIVO_DA_ROTA:\n{objetivo}\n\n"
+                "CONTEXTO_DE_CONVERSAS_ANTERIORES:\n{contexto_conversa}\n\n"
                 "TRECHOS_RECUPERADOS_DO_FAQ:\n{evidencias}"
             ),
             output_schema=FaqResult,
@@ -42,10 +43,12 @@ class FaqAgent:
         pergunta_original: str,
         objetivo: str,
         evidencias: list[Evidence],
+        contexto_conversa: str = "Não fornecido.",
     ) -> dict[str, str]:
         return {
             "pergunta_original": pergunta_original,
             "objetivo": objetivo,
+            "contexto_conversa": contexto_conversa,
             "evidencias": json.dumps(
                 [evidence.model_dump() for evidence in evidencias],
                 ensure_ascii=False,
@@ -56,13 +59,14 @@ class FaqAgent:
         self,
         pergunta_original: str,
         objetivo: str = "Responder a dúvida sobre o funcionamento do Quimia.",
+        contexto_conversa: str = "Não fornecido.",
     ) -> tuple[FaqResult, list[Evidence]]:
         evidencias = self._retriever(pergunta_original)
         if not evidencias:
             mark(outcome="sem_evidencias")
             return FaqResult(intencao="consultar", resposta=FAQ_NOT_FOUND), []
         result = self._agent.invoke(
-            self._payload(pergunta_original, objetivo, evidencias)
+            self._payload(pergunta_original, objetivo, evidencias, contexto_conversa)
         )
         return result, evidencias
 
@@ -70,21 +74,23 @@ class FaqAgent:
         self,
         pergunta_original: str,
         objetivo: str = "Responder a dúvida sobre o funcionamento do Quimia.",
+        contexto_conversa: str = "Não fornecido.",
     ) -> FaqResult:
-        result, _ = self.invoke_with_evidence(pergunta_original, objetivo)
+        result, _ = self.invoke_with_evidence(pergunta_original, objetivo, contexto_conversa)
         return result
 
     async def ainvoke_with_evidence(
         self,
         pergunta_original: str,
         objetivo: str = "Responder a dúvida sobre o funcionamento do Quimia.",
+        contexto_conversa: str = "Não fornecido.",
     ) -> tuple[FaqResult, list[Evidence]]:
         evidencias = await asyncio.to_thread(self._retriever, pergunta_original)
         if not evidencias:
             mark(outcome="sem_evidencias")
             return FaqResult(intencao="consultar", resposta=FAQ_NOT_FOUND), []
         result = await self._agent.ainvoke(
-            self._payload(pergunta_original, objetivo, evidencias)
+            self._payload(pergunta_original, objetivo, evidencias, contexto_conversa)
         )
         return result, evidencias
 
@@ -92,6 +98,7 @@ class FaqAgent:
         self,
         pergunta_original: str,
         objetivo: str = "Responder a dúvida sobre o funcionamento do Quimia.",
+        contexto_conversa: str = "Não fornecido.",
     ) -> FaqResult:
-        result, _ = await self.ainvoke_with_evidence(pergunta_original, objetivo)
+        result, _ = await self.ainvoke_with_evidence(pergunta_original, objetivo, contexto_conversa)
         return result
