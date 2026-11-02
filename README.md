@@ -115,6 +115,7 @@ Configurações adicionais usadas pelo código:
 | `CHAT_BUDGET_SECONDS` / `ROTULO_BUDGET_SECONDS` | `25` / `22`; ao exceder, a rota responde 504 em JSON. |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8081`; origens separadas por vírgula. `*` é rejeitado com credenciais habilitadas. |
 | `AGENT_THREADS` / `AGENT_WARMUP` | `64` threads / `1` para aquecimento na inicialização. |
+| `QUIMIA_AGENTE_TOKEN` | Segredo compartilhado com o `quimia-api`; quando definido, protege as três rotas POST de serviço. |
 
 O juiz usa `typesafe/jev-1.14.0` via `/systemone`, com `COMMANDCODE_API_KEY`. O FAQ usa Gemini apenas para embeddings. O modelo principal e o fallback também são usados na leitura de rótulos como leituras independentes.
 
@@ -154,7 +155,7 @@ Resposta:
 
 `agentes_acionados` descreve as etapas efetivamente executadas; a lista muda conforme o roteamento. Validação de corpo retorna 422; falha de processamento, 503; limite de tempo, 504. `POST /chat` e o fechamento de sessão incluem o header `X-Trace-Id` quando a requisição é observada.
 
-O código atual deste serviço **não autentica o `user_id` recebido nem valida um token de backend**. Quem o expuser ao aplicativo precisa controlar o acesso e fornecer a identidade correta do usuário. CORS restringe origens de navegadores, não autentica chamadas HTTP. O Baú vincula suas consultas ao UUID recebido pelo backend e não permite que o modelo escolha outro UUID.
+Com `QUIMIA_AGENTE_TOKEN` configurado, as rotas POST de chat, encerramento e imagem exigem `Authorization: Bearer <segredo>`. Esse token identifica o serviço chamador; o agente não valida por conta própria se o `user_id` do corpo pertence ao usuário final. Essa verificação cabe ao `quimia-api`, que obtém o UUID do JWT. Sem o token configurado, as rotas permanecem abertas para testes locais pelo Swagger. CORS restringe origens de navegadores, mas não autentica chamadas HTTP.
 
 ### Encerramento de sessão
 
@@ -229,9 +230,25 @@ O último comando verifica contratos HTTP locais sem chamar modelos de IA; ele a
 
 O workflow em `.github/workflows/ci.yml` usa Python 3.12 e valida instalação, importação, testes, cobertura mínima de 80% e o ZIP de deploy. Pull requests e pushes para `main` executam os checks. Uma **Release publicada** também envia o ZIP à Discloud e faz um smoke check em `GET /`. O pacote contém `app/`, `data/`, `requirements.txt` e `discloud.config`; não inclui `.env`. Configure os segredos e demais variáveis no ambiente da hospedagem. O helper de deploy usa `DISCLOUD_TOKEN` e `DISCLOUD_APP_ID` nos secrets do workflow para atualizar a aplicação existente. O arquivo `discloud.config` inicia o Uvicorn na porta 8080.
 
+## Integração com o quimia-api e o aplicativo móvel
+
+O aplicativo envia mensagens ao `quimia-api`, que autentica o usuário e encaminha as chamadas ao `quimia-agent`. O contrato de `/chat`, `/chat/sessions/close` e `/produtos/busca-por-imagem` corresponde ao cliente HTTP do `quimia-api`.
+
+Configure o mesmo segredo nos dois serviços e a URL base do agente na API:
+
+```text
+quimia-agent: QUIMIA_AGENTE_TOKEN=<segredo-compartilhado>
+quimia-api:   QUIMIA_AGENTE_TOKEN=<mesmo-segredo>
+quimia-api:   QUIMIA_AGENTE_URL=<URL-base-do-quimia-agent>
+```
+
+`QUIMIA_AGENTE_URL` aponta para a raiz do serviço, por exemplo `http://localhost:8000` se os dois processos rodam na mesma máquina. Não acrescente `/chat`. Quando o token está configurado no agente, ele é exigido como `Authorization: Bearer <segredo>` nas três rotas POST citadas. `GET /health/` e `/docs` permanecem sem essa exigência. Configure o segredo antes de expor o serviço; sem `QUIMIA_AGENTE_URL`, o chat da API fica indisponível.
+
+No aplicativo, envie o JWT do usuário ao `POST /api/v1/chat/mensagens` com `{"texto":"Sua pergunta"}`. A resposta inclui `texto` e `sessaoId`; envie `sessaoId` nas mensagens seguintes para continuar a mesma conversa. Para iniciar um novo chat, use `POST /api/v1/chat/sessoes/{sessaoId}/encerrar` e depois envie uma mensagem sem `sessaoId`.
+
 ## Limites atuais
 
-- A identidade informada em `user_id` não é autenticada por este serviço. A camada que o publica deve controlar o acesso ao histórico e aos dados pessoais.
+- O token autentica o serviço chamador, mas a associação entre `user_id` e o usuário final depende do `quimia-api`. Não exponha as rotas de serviço diretamente ao aplicativo.
 - A memória entre sessões depende do fechamento da sessão, dos últimos 40 turnos resumidos e da correspondência lexical entre pergunta e resumo.
 - O FAQ não reformula a consulta ao Qdrant com o contexto recuperado de outras sessões.
 - O GPS não consulta nem confirma endereços, horários ou aceitação em pontos de descarte; a orientação é usar Proximidade e confirmar com o ponto responsável.

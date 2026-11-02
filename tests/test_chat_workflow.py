@@ -181,7 +181,7 @@ def test_unapproved_candidate_is_never_delivered(verdict):
 def test_chat_swagger_validation_and_response_with_history(monkeypatch):
     monkeypatch.setattr(main, "validar_config", lambda: [])
     monkeypatch.setattr(main, "close_mongo", lambda: None)
-    monkeypatch.delenv("CHAT_BACKEND_TOKEN", raising=False)
+    monkeypatch.delenv("QUIMIA_AGENTE_TOKEN", raising=False)
     calls = []
     monkeypatch.setattr(routes, "save_turn", lambda *args: calls.append(args))
     monkeypatch.setattr(routes, "load_chat_context", lambda user, session: "Turno anterior")
@@ -207,7 +207,7 @@ def test_chat_swagger_validation_and_response_with_history(monkeypatch):
 def test_chat_errors_do_not_expose_credentials(monkeypatch):
     monkeypatch.setattr(main, "validar_config", lambda: [])
     monkeypatch.setattr(main, "close_mongo", lambda: None)
-    monkeypatch.delenv("CHAT_BACKEND_TOKEN", raising=False)
+    monkeypatch.delenv("QUIMIA_AGENTE_TOKEN", raising=False)
     monkeypatch.setattr(routes, "load_chat_context", lambda *args: "Não fornecido.")
     def fail(*args): raise RuntimeError("password=secret")
     monkeypatch.setattr(routes, "run_chat", fail)
