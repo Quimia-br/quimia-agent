@@ -1,11 +1,13 @@
 import logging
 import asyncio
 import os
+from hmac import compare_digest
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.config import CORS_ORIGINS, validar_config
 from app.database.mongo import close_mongo
@@ -22,6 +24,16 @@ logger = logging.getLogger(__name__)
 # segundos. O padrão do Python é min(32, CPUs + 4): numa hospedagem de 1 CPU são 5 threads, e as conversas
 # simultâneas esperavam umas pelas outras até o orçamento de tempo acabar.
 THREADS_PADRAO = "64"
+ROTAS_DA_API = frozenset({"/chat", "/chat/sessions/close", "/produtos/busca-por-imagem"})
+
+
+async def validar_token_da_api(request: Request, call_next):
+    """Aceita somente o quimia-api nas rotas de serviço quando há token configurado."""
+    if request.method == "POST" and request.url.path in ROTAS_DA_API:
+        token = (os.getenv("QUIMIA_AGENTE_TOKEN") or "").strip()
+        if token and not compare_digest(request.headers.get("authorization", ""), f"Bearer {token}"):
+            return JSONResponse(status_code=401, content={"detail": "Não autorizado."})
+    return await call_next(request)
 
 
 def aquecer() -> None:
@@ -97,6 +109,7 @@ def create_app() -> FastAPI:
     application.include_router(chat_router)
     application.include_router(monitor_router)
     application.include_router(produto_router)
+    application.middleware("http")(validar_token_da_api)
     application.middleware("http")(observe_request)
 
     @application.get("/")

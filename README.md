@@ -373,7 +373,7 @@ Compatibilidade usa fn_match_produtos. A tool converte o retorno compativel
 (ausência de regra encontrada) em nao_avaliado, informando que não há dados
 suficientes no app para confirmar segurança. Incompatibilidades são preservadas. Não há gravação de histórico
 pelas tools. As consultas usam FDS ativas; ausência de dados não confirma segurança.
-O vínculo de cômodo segue o esquema atual: produto.id_comodo, com verificação
+O vínculo de cômodo segue o esquema atual: estante_produto.id_comodo, com verificação
 simultânea do dono do cômodo, da estante e da associação do produto.
 As datas dos históricos usam início inclusivo e fim exclusivo em ISO 8601;
 forneça o fuso America/Sao_Paulo ao converter períodos relativos.
@@ -420,12 +420,12 @@ ordem cronológica, e os envia como contexto ao orquestrador e aos especialistas
 que recebem histórico. Cada pergunta e resposta é limitada a 1.000 e 2.000
 caracteres no contexto, respectivamente. O histórico ajuda a interpretar a
 pergunta atual, mas não serve como evidência técnica sobre produtos ou riscos.
-O endpoint `/chat` recebe `user_id` do próprio cliente e não autentica essa
-identidade; a integração com o aplicativo precisa validar o usuário antes de
-expor o histórico em produção.
-O turno só é salvo após o fluxo terminar. Falhas de persistência ou processamento
+O endpoint `/chat` recebe `user_id` no corpo. Com `QUIMIA_AGENTE_TOKEN` configurado,
+somente chamadas com o token de serviço compartilhado são aceitas; o `quimia-api`
+obtém o usuário do JWT do aplicativo e envia o UUID ao agente.
+O turno é salvo em segundo plano depois da resposta. Falhas de processamento
 retornam 503 com uma mensagem pública, sem detalhes de credenciais.
-A execução do grafo tem timeout de 180 segundos. Os guardrails de entrada e saída
+O `/chat` respeita `CHAT_BUDGET_SECONDS` (25 segundos por padrão). Os guardrails de entrada e saída
 fazem parte do fluxo; a avaliação do conteúdo dos especialistas é feita pelo juiz Jev.
 
 ### Encerramento de sessão
@@ -442,4 +442,32 @@ com o modelo rápido e grava o resumo em `chat_summaries` (`user_id`,
 
 Os turnos são enviados ao modelo como dados, não como instruções. Falhas
 retornam 503 com mensagem pública. O resumo ainda não é usado como contexto de
-novas sessões. Esta rota, como `/chat`, não autentica o `user_id`.
+novas sessões. Esta rota usa a mesma proteção por token de serviço do `/chat`.
+
+### Integração com o quimia-api e o aplicativo móvel
+
+O aplicativo envia mensagens ao `quimia-api`, que autentica o usuário e encaminha
+as chamadas ao `quimia-agent`. O aplicativo **não** chama o agente diretamente.
+O contrato de `/chat`, `/chat/sessions/close` e `/produtos/busca-por-imagem`
+já corresponde ao cliente HTTP existente no `quimia-api`.
+
+Configure o mesmo segredo nos dois serviços:
+
+```text
+quimia-agent: QUIMIA_AGENTE_TOKEN=<segredo-compartilhado>
+quimia-api:   QUIMIA_AGENTE_TOKEN=<mesmo-segredo>
+quimia-api:   QUIMIA_AGENTE_URL=<URL-base-do-quimia-agent>
+```
+
+`QUIMIA_AGENTE_URL` é a raiz do serviço, por exemplo `http://localhost:8000`
+quando os dois processos rodam na mesma máquina, sem acrescentar `/chat`.
+Sem a URL, o chat do `quimia-api` fica desligado. Sem o token no agente, as rotas
+continuam abertas para testes locais pelo Swagger; configure-o antes de expor o
+serviço. O token é enviado como `Authorization: Bearer <segredo>` e protege as
+três rotas citadas. `/health` e a documentação continuam sem esse token.
+
+No aplicativo, envie o JWT do usuário ao `POST /api/v1/chat/mensagens` com
+`{"texto":"Sua pergunta"}`. A resposta inclui `texto` e `sessaoId`; envie
+`sessaoId` nas mensagens seguintes para continuar a mesma conversa. Para iniciar
+um novo chat, chame `POST /api/v1/chat/sessoes/{sessaoId}/encerrar` e depois
+envie uma mensagem sem `sessaoId`. A API também exige o JWT nessas chamadas.
