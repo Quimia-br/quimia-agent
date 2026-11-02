@@ -25,6 +25,11 @@ class ChatModelWithFallback:
         fallback = self._fallback.with_structured_output(schema, method="json_mode")
         return primary.with_fallbacks([fallback])
 
+    def independent_structured_outputs(self, schema: Any) -> list[Any]:
+        """Um leitor por modelo, sem um servir de reserva do outro: para conferir uma resposta com a de outro modelo."""
+        models = [self._primary] + ([self._fallback] if self._fallback is not None else [])
+        return [model.with_structured_output(schema, method="json_mode") for model in models]
+
     def bind_tools(self, tools: list) -> Any:
         primary = self._primary.bind_tools(tools)
         if self._fallback is None:

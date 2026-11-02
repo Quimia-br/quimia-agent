@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import os
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -16,6 +17,11 @@ from app.observability.telemetry import observe_request
 from app.observability import storage
 
 logger = logging.getLogger(__name__)
+
+# O trabalho bloqueante (chamadas à IA, consultas ao banco) roda em threads, e cada conversa ocupa algumas por vários
+# segundos. O padrão do Python é min(32, CPUs + 4): numa hospedagem de 1 CPU são 5 threads, e as conversas
+# simultâneas esperavam umas pelas outras até o orçamento de tempo acabar.
+THREADS_PADRAO = "64"
 
 
 def aquecer() -> None:
@@ -55,6 +61,8 @@ async def lifespan(app: FastAPI):
     if not storage.enabled():
         logger.warning("LangSmith desativado: as métricas não serão armazenadas.")
 
+    asyncio.get_running_loop().set_default_executor(
+        ThreadPoolExecutor(max_workers=int(os.getenv("AGENT_THREADS", THREADS_PADRAO)), thread_name_prefix="agente"))
     if os.getenv("AGENT_WARMUP", "1") != "0":
         asyncio.get_running_loop().run_in_executor(None, aquecer)
 
