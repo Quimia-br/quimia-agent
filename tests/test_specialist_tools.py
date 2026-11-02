@@ -1,4 +1,5 @@
 from uuid import uuid4
+from datetime import datetime
 import pytest
 from app.agent.specialists.bau import bau_tools
 from app.agent.specialists.quimico import quimico_tools
@@ -40,7 +41,26 @@ def test_bau_room_and_shelf_queries_include_favorites(monkeypatch):
     assert room_params[:3] == (owner, owner, owner)
 
 
-def test_composition_uses_pending_name_and_latest_fds(monkeypatch):
+def test_bau_history_uses_each_database_column_type(monkeypatch):
+    owner = str(uuid4())
+    queries = []
+    monkeypatch.setattr(bau_tools, "query", lambda sql, params: queries.append((sql, params)) or {"status": "ok", "dados": []})
+    tools = {item.name: item for item in bau_tools.create_bau_tools(owner)}
+
+    tools["consultar_historico_misturas"].invoke({"inicio": "2026-11-01T00:00:00"})
+    tools["consultar_historico_recomendacoes"].invoke({"inicio": "2026-11-01T03:00:00+00:00"})
+
+    match_sql, match_params = queries[0]
+    recommendation_sql, recommendation_params = queries[1]
+    assert "::timestamptz" in match_sql
+    assert match_params[1].utcoffset().total_seconds() == -3 * 3600
+    assert "::timestamp" in recommendation_sql
+    assert "::timestamptz" not in recommendation_sql
+    assert recommendation_params[1] == datetime(2026, 11, 1)
+    assert recommendation_params[1].tzinfo is None
+
+
+def test_composition_uses_pending_name_from_active_fds(monkeypatch):
     queries = []
     monkeypatch.setattr(quimico_tools, "query", lambda sql, params: queries.append((sql, params)) or {"status": "ok", "dados": []})
 
@@ -52,10 +72,11 @@ def test_composition_uses_pending_name_and_latest_fds(monkeypatch):
     assert "pend.termo_bruto" in sql
     assert "bruto.item ->> 'nome'" in sql
     assert "ROW_NUMBER() OVER" in sql
-    assert "ORDER BY data_atualizacao DESC NULLS LAST, id DESC LIMIT 1" in sql
+    assert "WHERE id_produto = %s AND ativo = TRUE" in sql
+    assert "ORDER BY data_atualizacao DESC NULLS LAST" not in sql
 
 
-def test_fds_detail_queries_use_latest_active_version(monkeypatch):
+def test_fds_detail_queries_follow_existing_database_scopes(monkeypatch):
     queries = []
     monkeypatch.setattr(quimico_tools, "query", lambda sql, params: queries.append((sql, params)) or {"status": "ok", "dados": []})
 
@@ -63,8 +84,8 @@ def test_fds_detail_queries_use_latest_active_version(monkeypatch):
     quimico_tools.consultar_primeiros_socorros.invoke({"id_produto": 7})
 
     assert len(queries) == 2
-    assert all("ORDER BY data_atualizacao DESC NULLS LAST, id DESC LIMIT 1" in sql
-               for sql, _ in queries)
+    assert "WHERE f.id_produto = %s AND f.ativo = TRUE" in queries[0][0]
+    assert "ORDER BY data_atualizacao DESC NULLS LAST, id DESC LIMIT 1" in queries[1][0]
 
 
 def test_match_without_incompatibility_rule_does_not_confirm_compatibility(monkeypatch):

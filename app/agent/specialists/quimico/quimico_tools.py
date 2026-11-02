@@ -27,14 +27,13 @@ def buscar_produto(termo: str, limite: int = 20) -> dict:
 
 @tool
 def consultar_composicao_produto(id_produto: int) -> dict:
-    """Consulta compostos da FDS ativa mais recente, inclusive os não resolvidos."""
-    return query("""WITH fds_atual AS (
+    """Consulta compostos das FDS ativas, inclusive os não resolvidos."""
+    return query("""WITH fds_ativas AS (
             SELECT id, versao, data_atualizacao, raw_json FROM fds
             WHERE id_produto = %s AND ativo = TRUE
-            ORDER BY data_atualizacao DESC NULLS LAST, id DESC LIMIT 1
         ), compostos AS (
             SELECT fc.*, ROW_NUMBER() OVER (PARTITION BY fc.id_fds ORDER BY fc.id) AS ordem
-            FROM fds_composto fc JOIN fds_atual f ON f.id = fc.id_fds
+            FROM fds_composto fc JOIN fds_ativas f ON f.id = fc.id_fds
         )
         SELECT f.id AS id_fds, f.versao, f.data_atualizacao,
             fc.id_substancia,
@@ -43,7 +42,7 @@ def consultar_composicao_produto(id_produto: int) -> dict:
             COALESCE(s.cas_numero, pend.cas_bruto, bruto.item ->> 'cas_numero') AS cas_numero,
             (fc.id_substancia IS NOT NULL) AS substancia_resolvida,
             fc.concentracao_min, fc.concentracao_max, fc.unidade_concentracao
-        FROM fds_atual f JOIN compostos fc ON fc.id_fds = f.id
+        FROM fds_ativas f JOIN compostos fc ON fc.id_fds = f.id
         LEFT JOIN substancia s ON s.id = fc.id_substancia
         LEFT JOIN LATERAL (
             SELECT f.raw_json #> ARRAY['secoes', '03', 'compostos', (fc.ordem - 1)::text] AS item
@@ -55,7 +54,7 @@ def consultar_composicao_produto(id_produto: int) -> dict:
               AND sp.cas_bruto IS NOT DISTINCT FROM (bruto.item ->> 'cas_numero')
             ORDER BY sp.id DESC LIMIT 1
         ) pend ON fc.id_substancia IS NULL
-        ORDER BY fc.id LIMIT 100""",
+        ORDER BY f.id, fc.id LIMIT 100""",
         (positive_id(id_produto),))
 
 
@@ -82,15 +81,14 @@ def verificar_compatibilidade_produtos(id_produto_a: int, id_produto_b: int) -> 
 
 @tool
 def consultar_incompatibilidades_produto(id_produto: int) -> dict:
-    """Consulta incompatibilidades da FDS ativa mais recente; ausência não comprova segurança."""
+    """Consulta incompatibilidades das FDS ativas; ausência não comprova segurança."""
     return query("""SELECT f.id AS id_fds, f.versao, fi.substancia_reagente,
         fi.descricao_risco, fi.severidade, s.nome_canonico, cq.nome AS classe_quimica
         FROM fds f JOIN fds_incompatibilidade fi ON fi.id_fds = f.id
         LEFT JOIN substancia s ON s.id = fi.id_substancia
         LEFT JOIN classe_quimica cq ON cq.id = fi.id_classe_quimica
-        WHERE f.id = (SELECT id FROM fds WHERE id_produto = %s AND ativo = TRUE
-                      ORDER BY data_atualizacao DESC NULLS LAST, id DESC LIMIT 1)
-        ORDER BY fi.id LIMIT 100""",
+        WHERE f.id_produto = %s AND f.ativo = TRUE
+        ORDER BY f.id, fi.id LIMIT 100""",
         (positive_id(id_produto),))
 
 
