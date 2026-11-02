@@ -14,7 +14,7 @@ from app.core.config import DATABASE_URL
 
 POOL_MINIMO = 1
 POOL_MAXIMO = 6
-ESPERA_POR_CONEXAO_SEGUNDOS = 3.0
+ESPERA_POR_CONEXAO_SEGUNDOS = 10.0
 
 _pool: ThreadedConnectionPool | None = None
 _pool_lock = threading.Lock()

@@ -110,3 +110,56 @@ def test_orientacao_geral_de_emergencia_nao_consulta_o_banco_e_cobre_as_vias():
     assert list(olhos["orientacao_geral"]) == ["olhos"] and "15 minutos" in olhos["orientacao_geral"]["olhos"]
     assert "192" in olhos["emergencia"]
     assert orientacao_geral_de_emergencia.invoke({"rota_exposicao": "ouvido"})["status"] == "error"
+
+
+def test_regra_entre_substancias_reune_regras_dos_dois_itens(monkeypatch):
+    from app.agent.specialists.quimico import quimico_tools
+
+    chamadas = []
+
+    def falso(sql, params=()):
+        chamadas.append((sql, params))
+        if "FROM incompatibilidade_regra" in sql:
+            return {"status": "ok", "dados": [{"id": 1, "severidade": "critica",
+                                               "descricao_risco": "Gera cloraminas.", "fonte": None}]}
+        if "FROM substancia_classe_quimica" in sql:
+            return {"status": "ok", "dados": [{"id_substancia": 1, "nome": "hipocloritos"}]}
+        achado = {"água": [{"id": 1, "nome_canonico": "Hipoclorito"}], "amônia": [{"id": 2, "nome_canonico": "Amônia"}]}
+        termo = "água" if "agua" in params[0] else "amônia"
+        return {"status": "ok", "dados": achado[termo]}
+
+    monkeypatch.setattr(quimico_tools, "query", falso)
+
+    resultado = quimico_tools.consultar_regra_entre_substancias.invoke({"termo_a": "Água", "termo_b": "amônia"})
+
+    assert resultado["status"] == "ok" and resultado["encontrado"] is True
+    assert resultado["regras"][0]["descricao_risco"] == "Gera cloraminas."
+    assert chamadas[-1][1] == {"a": [1], "b": [2]}
+    assert resultado["itens"][0]["substancias"][0]["classes"] == ["hipocloritos"]
+    assert resultado["itens"][1]["substancias"][0]["classes"] == []
+
+
+def test_regra_entre_substancias_item_desconhecido_nao_consulta_regras(monkeypatch):
+    from app.agent.specialists.quimico import quimico_tools
+
+    monkeypatch.setattr(quimico_tools, "query", lambda sql, params=(): {"status": "ok", "dados": []})
+
+    resultado = quimico_tools.consultar_regra_entre_substancias.invoke({"termo_a": "xyzzy", "termo_b": "amônia"})
+
+    assert resultado["encontrado"] is False and resultado["regras"] == []
+    assert "não foi reconhecido" in resultado["message"]
+
+
+def test_regra_entre_substancias_falha_do_banco_e_erro_e_termo_vazio_tambem(monkeypatch):
+    from app.agent.specialists.quimico import quimico_tools
+
+    monkeypatch.setattr(quimico_tools, "query", lambda sql, params=(): {"status": "error", "message": "x"})
+
+    assert quimico_tools.consultar_regra_entre_substancias.invoke({"termo_a": "a", "termo_b": "b"})["status"] == "error"
+    assert quimico_tools.consultar_regra_entre_substancias.invoke({"termo_a": " ", "termo_b": "b"})["status"] == "error"
+
+
+def test_normalizar_tira_acentos_em_maiusculas_e_minusculas():
+    from app.agent.specialists.quimico.quimico_tools import _normalizar
+
+    assert _normalizar("  ÁGUA   Sanitária ") == "agua sanitaria"

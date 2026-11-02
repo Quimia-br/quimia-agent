@@ -456,3 +456,22 @@ def test_orientacao_de_descarte_e_entregue_como_texto_padrao_sem_chamar_a_ia():
     assert resultado["resposta"] == GPS_RESPONSE
     assert resultado["agentes_acionados"] == ["guardrail_entrada", "orquestrador", "gps", "juiz",
                                               "guardrail_saida", "sintetizador"]
+
+
+def test_aplicacao_sobe_com_pool_de_threads_proprio_e_configuravel(monkeypatch):
+    import asyncio
+
+    from app import main
+
+    async def sobe():
+        async with main.lifespan(main.app):
+            loop = asyncio.get_running_loop()
+            await asyncio.to_thread(lambda: None)  # o executor só nasce no primeiro uso
+            return loop._default_executor._max_workers
+
+    monkeypatch.setattr(main, "validar_config", lambda: [])
+    monkeypatch.setattr(main, "close_mongo", lambda: None)
+    assert asyncio.run(sobe()) == int(main.THREADS_PADRAO)
+
+    monkeypatch.setenv("AGENT_THREADS", "7")
+    assert asyncio.run(sobe()) == 7

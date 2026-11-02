@@ -233,3 +233,121 @@ class TestCandidatos:
         catalogo()
 
         assert rotulo.montar_candidatos(LeituraRotulo()) == []
+
+
+class TestEmbalagensReais:
+    """O que o modelo transcreve de uma embalagem de verdade traz volume, marca repetida no nome e complementos."""
+
+    def test_volume_solto_e_marca_em_maiuscula_nao_impedem_o_casamento(self, catalogo):
+        catalogo(produto("Lava Roupas Líquido Ciclo Rápido Ação Total", "Omo", "7891150000000"))
+
+        resultado = rotulo.ancorar(ProdutoLido(
+            nome="Lava Roupas Líquido Ciclo Rápido Ação Total 750 mL", marca="OMO", cod_barras=None))
+
+        assert resultado["nome"] == "Lava Roupas Líquido Ciclo Rápido Ação Total" and resultado["marca"] == "Omo"
+
+    def test_marca_com_complemento_e_repetida_no_nome(self, catalogo):
+        catalogo(produto("Banheiro Tira Limo com Cloro", "Mr Músculo", "7891000000009"))
+
+        resultado = rotulo.ancorar(ProdutoLido(
+            nome="Mr Músculo Banheiro Tira Limo com Cloro 500ml", marca="Mr Músculo (SC Johnson)", cod_barras=None))
+
+        assert resultado["nome"] == "Banheiro Tira Limo com Cloro" and resultado["marca"] == "Mr Músculo"
+
+    def test_unidades_soltas_nao_contam_como_palavra_do_nome(self):
+        assert rotulo._tokens("Detergente 500 ml 2 L 1 kg") == frozenset({"detergente"})
+
+
+class TestConferenciaEntreModelos:
+    def leitura(self, **produto):
+        return LeituraRotulo(candidatos=[ProdutoLido(**produto)])
+
+    def test_invencao_de_um_modelo_nao_passa(self):
+        a = self.leitura(nome="Lava Louças Concentrado", marca="Veja")
+        b = self.leitura(nome="Gold Multiuso", marca="VEJA")
+
+        assert rotulo.conferir([a, b]).candidatos == []
+
+    def test_mesma_leitura_com_marca_em_caixa_diferente_passa(self):
+        a = self.leitura(nome="Gold Multiuso", marca="Veja")
+        b = self.leitura(nome="Gold Multiuso", marca="VEJA")
+
+        assert [c.nome for c in rotulo.conferir([a, b]).candidatos] == ["Gold Multiuso"]
+
+    def test_erro_de_uma_letra_na_leitura_nao_derruba_a_conferencia(self):
+        a = self.leitura(nome="Banheiro Tira Limo com Cloro", marca="Mr Músculo")
+        b = self.leitura(nome="Mr Músculo Banheiro Tira Limão com Cloro", marca="Mr Músculo")
+
+        assert len(rotulo.conferir([a, b]).candidatos) == 1
+
+    def test_marca_diferente_com_nome_longo_igual_passa_sem_marca(self):
+        a = self.leitura(nome="Mr Músculo Banheiro Tira Limo com Cloro", marca="Mr Músculo (SC Johnson)")
+        b = self.leitura(nome="Mr Músculo Banheiro Tira Limo com Cloro", marca="SC Johnson")
+
+        # 'SC Johnson' está contida em 'Mr Músculo (SC Johnson)': a marca fica
+        assert rotulo.conferir([a, b]).candidatos[0].marca
+
+        c = self.leitura(nome="Banheiro Tira Limo com Cloro", marca="Mr Músculo")
+        d = self.leitura(nome="Banheiro Tira Limo com Cloro", marca="Outra Fabricante")
+        resultado = rotulo.conferir([c, d]).candidatos
+
+        assert len(resultado) == 1 and resultado[0].marca is None
+
+    def test_marca_diferente_com_nome_curto_nao_passa(self):
+        a = self.leitura(nome="Gold Multiuso", marca="Veja")
+        b = self.leitura(nome="Gold Multiuso", marca="Outra")
+
+        assert rotulo.conferir([a, b]).candidatos == []
+
+    def test_mesmo_codigo_valido_basta_mesmo_com_nomes_diferentes(self):
+        a = self.leitura(nome="Alvejante", marca="X", cod_barras="7891234567895")
+        b = self.leitura(nome="Água Sanitária", marca="Y", cod_barras="7 891234 567895")
+
+        assert len(rotulo.conferir([a, b]).candidatos) == 1
+
+    def test_com_um_leitor_so_vale_o_que_tem_codigo_de_barras_valido(self):
+        so_nome = self.leitura(nome="Gold Multiuso", marca="Veja")
+        com_codigo = self.leitura(nome="Água Sanitária", marca="Limpa Bem", cod_barras="7891234567895")
+
+        assert rotulo.conferir([so_nome]).candidatos == []
+        assert len(rotulo.conferir([com_codigo]).candidatos) == 1
+
+
+class TestLerRotulo:
+    class Leitor:
+        def __init__(self, leitura=None, erro=None):
+            self.leitura, self.erro = leitura, erro
+
+        async def ainvoke(self, mensagens):
+            if self.erro:
+                raise self.erro
+            return self.leitura
+
+    def modelo(self, monkeypatch, *leitores):
+        class Modelo:
+            def independent_structured_outputs(self, schema):
+                return list(leitores)
+
+        monkeypatch.setattr(rotulo, "create_chat_model", lambda: Modelo())
+
+    def test_dois_leitores_concordando_devolvem_o_candidato(self, monkeypatch, catalogo):
+        catalogo()
+        leitura = LeituraRotulo(candidatos=[ProdutoLido(nome="Gold Multiuso", marca="Veja")])
+        self.modelo(monkeypatch, self.Leitor(leitura), self.Leitor(leitura))
+
+        candidatos = asyncio.run(rotulo.ler_rotulo(JPEG, "image/jpeg"))
+
+        assert candidatos == [{"nome": "Gold Multiuso", "marca": "Veja", "cod_barras": None}]
+
+    def test_um_leitor_fora_do_ar_deixa_so_o_que_tem_codigo(self, monkeypatch, catalogo):
+        catalogo()
+        leitura = LeituraRotulo(candidatos=[ProdutoLido(nome="Gold Multiuso", marca="Veja")])
+        self.modelo(monkeypatch, self.Leitor(leitura), self.Leitor(erro=TimeoutError("lento")))
+
+        assert asyncio.run(rotulo.ler_rotulo(JPEG, "image/jpeg")) == []
+
+    def test_todos_os_leitores_fora_do_ar_propaga_o_erro(self, monkeypatch):
+        self.modelo(monkeypatch, self.Leitor(erro=TimeoutError("a")), self.Leitor(erro=RuntimeError("b")))
+
+        with pytest.raises(TimeoutError):
+            asyncio.run(rotulo.ler_rotulo(JPEG, "image/jpeg"))
