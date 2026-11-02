@@ -1,3 +1,4 @@
+from functools import lru_cache
 from typing import Any
 
 from langchain_openai import ChatOpenAI
@@ -24,6 +25,11 @@ class ChatModelWithFallback:
         fallback = self._fallback.with_structured_output(schema, method="json_mode")
         return primary.with_fallbacks([fallback])
 
+    def independent_structured_outputs(self, schema: Any) -> list[Any]:
+        """Um leitor por modelo, sem um servir de reserva do outro: para conferir uma resposta com a de outro modelo."""
+        models = [self._primary] + ([self._fallback] if self._fallback is not None else [])
+        return [model.with_structured_output(schema, method="json_mode") for model in models]
+
     def bind_tools(self, tools: list) -> Any:
         primary = self._primary.bind_tools(tools)
         if self._fallback is None:
@@ -32,21 +38,39 @@ class ChatModelWithFallback:
 
 
 def create_chat_model() -> ChatModelWithFallback:
-    """Cria um modelo de chat da Provider API com a chave compartilhada."""
+    """Modelo de chat da Provider API com a chave compartilhada.
+
+    O mesmo par de clientes serve todas as requisições enquanto a configuração não muda: recriá-los a cada
+    pergunta refazia o TLS com o provedor em cada etapa.
+    """
     config = carregar_config()
     if not config.commandcode_api_key:
         raise ModelConfigurationError("COMMANDCODE_API_KEY não está configurada.")
+    return _modelo(
+        config.commandcode_api_key,
+        config.commandcode_base_url,
+        config.commandcode_model,
+        config.commandcode_model_fallback,
+        config.commandcode_timeout_seconds,
+        config.commandcode_max_retries,
+        config.commandcode_reasoning_effort,
+    )
 
+
+@lru_cache(maxsize=8)
+def _modelo(
+    api_key, base_url, model, fallback, timeout, max_retries, reasoning_effort=None
+) -> ChatModelWithFallback:
     def build(model_name: str):
+        extra = {"reasoning_effort": reasoning_effort} if reasoning_effort else {}
         return ChatOpenAI(
-            api_key=config.commandcode_api_key,
-            base_url=config.commandcode_base_url,
+            api_key=api_key,
+            base_url=base_url,
             model=model_name,
             temperature=0,
-            timeout=config.commandcode_timeout_seconds,
-            max_retries=config.commandcode_max_retries,
+            timeout=timeout,
+            max_retries=max_retries,
+            **extra,
         )
 
-    return ChatModelWithFallback(
-        build(config.commandcode_model), build(config.commandcode_model_fallback)
-    )
+    return ChatModelWithFallback(build(model), build(fallback))

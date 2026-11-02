@@ -98,7 +98,7 @@ def snapshot(records, *, days=7, turns_per_user=5, minutes_saved=None, hourly_co
     period_cost = total_cost + fixed_weekly_cost * days / 7
     benefit = resolved * value if value is not None and confirmations else None
     observed_mean_cost = total_cost / n if n and calls else None
-    primary = os.getenv("COMMANDCODE_MODEL", "xiaomi/mimo-v2.6-flash")
+    primary = os.getenv("COMMANDCODE_MODEL", "z-ai/glm-5.3-flash")
     plan_rate = rates.get(primary)
     planned_cost = ((planned_input_tokens * plan_rate["input"] + planned_output_tokens * plan_rate["output"]) / 1_000_000
                     if plan_rate else None)

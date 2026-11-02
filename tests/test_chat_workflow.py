@@ -3,6 +3,7 @@ import json
 from uuid import uuid4
 
 import pytest
+from fastapi import BackgroundTasks
 from fastapi.testclient import TestClient
 from app.agent.contracts import OrchestratorResult, RoutePlan, JudgeResult, SynthesisResult, SpecialistResult, Evidence
 from app.agent.workflow import build_graph, SAFE_RESPONSE, ChatRunResult
@@ -52,7 +53,7 @@ def test_graph_dependencies_and_judgment_before_delivery():
         async def ainvoke_with_evidence(self, question, goal, context, history):
             events.append(self.name)
             if self.name == "quimico": assert "Produto identificado" in context
-            return SpecialistResult(dominio=self.name, intencao="consultar", resposta="Produto identificado"), [
+            return SpecialistResult(dominio=self.name, intencao="consultar", resposta=f"Produto identificado por {self.name}"), [
                 Evidence(source_id=self.name, title="Tool", content="Evidência confirmada")]
     class Synthesizer:
         async def ainvoke(self, reviewed):
@@ -73,7 +74,7 @@ def test_graph_dependencies_and_judgment_before_delivery():
                         factory=lambda name, owner: Specialist(name))
     result = asyncio.run(graph.ainvoke({"pergunta": "Pergunta", "user_id": str(uuid4()), "contexto": "Histórico"}))
     assert events == ["orquestrador", "bau", "quimico", "juiz", "juiz", "guardrail_saida", "sintetizador"]
-    assert result["resposta"] == "Produto identificado\n\nProduto identificado"
+    assert result["resposta"] == "Produto identificado por bau\n\nProduto identificado por quimico"
     assert result["agentes_acionados"] == [
         "guardrail_entrada", "orquestrador", "bau", "quimico", "juiz", "juiz",
         "guardrail_saida", "sintetizador",
@@ -279,7 +280,9 @@ def test_chat_route_passes_same_session_history_to_graph_and_saves_reply(monkeyp
     monkeypatch.setattr(routes, "load_chat_context", load)
     monkeypatch.setattr(routes, "run_chat", run)
     monkeypatch.setattr(routes, "save_turn", save)
-    response = asyncio.run(routes.conversar(ChatRequest(user_id=owner, session_id="s1", pergunta="E ele?")))
+    background = BackgroundTasks()
+    response = asyncio.run(routes.conversar(ChatRequest(user_id=owner, session_id="s1", pergunta="E ele?"), background))
+    asyncio.run(background())  # a gravação do turno roda depois da resposta
     assert response.resposta == "Resposta"
     assert response.agentes_acionados == ["guardrail_entrada", "orquestrador"]
     assert events == [
@@ -289,3 +292,45 @@ def test_chat_route_passes_same_session_history_to_graph_and_saves_reply(monkeyp
     ]
 
 
+
+
+def test_frases_repetidas_entre_rotas_saem_uma_vez():
+    from app.agent.workflow import juntar_partes
+
+    assert juntar_partes([
+        "Não encontrei produtos na estante. Além disso, a mistura precisa de avaliação.",
+        "Não encontrei produtos na estante! Quais são os dois produtos?",
+        "Não encontrei produtos na estante.",
+    ]) == ("Não encontrei produtos na estante. Além disso, a mistura precisa de avaliação."
+           "\n\nQuais são os dois produtos?")
+
+
+def test_rota_nao_aprovada_sai_e_as_aprovadas_seguem_com_aviso():
+    from app.agent.workflow import PARTE_NAO_CONFIRMADA
+
+    class Orchestrator:
+        async def ainvoke(self, question, context):
+            return OrchestratorResult(status="roteado", pergunta_original=question, rotas=[
+                RoutePlan(id="r1", agente="faq", objetivo="Explicar"),
+                RoutePlan(id="r2", agente="quimico", objetivo="Consultar")])
+    class Specialist:
+        def __init__(self, name): self.name = name
+        async def ainvoke_with_evidence(self, question, goal, context="", history=""):
+            return SpecialistResult(dominio=self.name, intencao="consultar", resposta=f"Resposta do {self.name}."), [
+                Evidence(source_id=self.name, title="Tool", content="Evidência")]
+    class Judge:
+        async def ainvoke(self, question, answer, results, evidence):
+            if results[0].dominio == "quimico":
+                return JudgeResult(veredito="bloqueado", confianca=1, justificativa="Sem evidência",
+                                   riscos_seguranca=["Sem sustentação"])
+            return JudgeResult(veredito="aprovado", confianca=1, justificativa="Ok")
+    class Output:
+        async def ainvoke(self, question, candidate, results, evidence):
+            return candidate
+    graph = build_graph(orchestrator=Orchestrator(), judge=Judge(), input_guardrail=AllowedInput(),
+                        output_guardrail=Output(), factory=lambda name, owner: Specialist(name))
+
+    result = asyncio.run(graph.ainvoke({"pergunta": "Pergunta", "user_id": str(uuid4()), "contexto": ""}))
+
+    assert result["resposta"] == "Resposta do faq.\n\n" + PARTE_NAO_CONFIRMADA
+    assert "quimico" not in result["resposta"]

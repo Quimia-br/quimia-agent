@@ -106,6 +106,117 @@ def consultar_primeiros_socorros(id_produto: int, rota_exposicao: str | None = N
         (positive_id(id_produto), rota_exposicao, rota_exposicao))
 
 
+ACENTUADAS = "áàâãäéèêëíìîïóòôõöúùûüç"
+SEM_ACENTO = ACENTUADAS + ACENTUADAS.upper(), "aaaaaeeeeiiiiooooouuuuc" * 2
+PRODUTOS_POR_TERMO = 5
+
+
+def _normalizar(termo: str) -> str:
+    return " ".join(termo.translate(str.maketrans(*SEM_ACENTO)).lower().split())
+
+
+def _substancias_do_termo(termo: str) -> dict:
+    """Substâncias a que o termo se refere: pelo nome ou sinônimo, ou pela composição das FDS ativas dos produtos
+    com esse nome. Assim 'amônia' (uma substância) e 'água sanitária' (um produto) entram na mesma consulta."""
+    padrao = f"%{_normalizar(termo)}%"
+    resultado = query(f"""SELECT DISTINCT s.id, s.nome_canonico FROM substancia s
+        LEFT JOIN substancia_sinonimo sn ON sn.id_substancia = s.id
+        WHERE lower(translate(s.nome_canonico, '{SEM_ACENTO[0]}', '{SEM_ACENTO[1]}')) LIKE %s
+           OR sn.sinonimo_normalizado LIKE %s
+        UNION
+        SELECT s.id, s.nome_canonico FROM substancia s WHERE s.id IN (
+            SELECT fc.id_substancia FROM produto p JOIN fds f ON f.id_produto = p.id AND f.ativo = TRUE
+            JOIN fds_composto fc ON fc.id_fds = f.id
+            WHERE fc.id_substancia IS NOT NULL
+              AND p.id IN (SELECT p2.id FROM produto p2
+                           WHERE lower(translate(p2.nome, '{SEM_ACENTO[0]}', '{SEM_ACENTO[1]}')) LIKE %s
+                           ORDER BY p2.id LIMIT {PRODUTOS_POR_TERMO}))
+        ORDER BY 1 LIMIT 30""", (padrao, padrao, padrao))
+    return resultado
+
+
+def _classes_das_substancias(ids: list[int]) -> dict[int, list[str]]:
+    """Classe química de cada substância: sem ela a regra 'hipocloritos com ácidos' não se liga ao vinagre."""
+    if not ids:
+        return {}
+    resultado = query("""SELECT sc.id_substancia, c.nome FROM substancia_classe_quimica sc
+        JOIN classe_quimica c ON c.id = sc.id_classe_quimica WHERE sc.id_substancia = ANY(%s)
+        ORDER BY sc.id_substancia, c.nome""", (ids,))
+    classes: dict[int, list[str]] = {}
+    for linha in resultado.get("dados", []) if resultado.get("status") == "ok" else []:
+        classes.setdefault(linha["id_substancia"], []).append(linha["nome"])
+    return classes
+
+
+@tool
+def consultar_regra_entre_substancias(termo_a: str, termo_b: str) -> dict:
+    """Regras de incompatibilidade cadastradas entre duas coisas citadas pelo nome, mesmo sem produto no catálogo:
+    cada termo pode ser uma substância (amônia, vinagre) ou um produto (água sanitária). Ausência de regra não
+    comprova segurança."""
+    termos = (termo_a.strip(), termo_b.strip())
+    if not all(termos):
+        return {"status": "error", "message": "Informe os dois itens."}
+    achados = [_substancias_do_termo(t) for t in termos]
+    if any(a.get("status") != "ok" for a in achados):
+        return {"status": "error", "message": "Não foi possível consultar os dados agora."}
+    ids = [[s["id"] for s in a["dados"]] for a in achados]
+    classes = _classes_das_substancias(sorted({i for lado in ids for i in lado}))
+    lados = [{"termo": t, "substancias": [{**s, "classes": classes.get(s["id"], [])} for s in a["dados"]]}
+             for t, a in zip(termos, achados)]
+    if not all(ids):
+        return {"status": "ok", "encontrado": False, "itens": lados, "regras": [],
+                "message": "Algum dos itens não foi reconhecido no catálogo de substâncias do app.",
+                "aviso_de_seguranca": SAFETY_NOTICE}
+
+    def lado(coluna_substancia, coluna_classe, posicao):
+        return (f"(r.{coluna_substancia} = ANY(%({posicao})s) OR r.{coluna_classe} IN "
+                f"(SELECT id_classe_quimica FROM substancia_classe_quimica WHERE id_substancia = ANY(%({posicao})s)))")
+
+    regras = query(f"""SELECT r.id, r.severidade, r.descricao_risco, r.fonte,
+          COALESCE(sa.nome_canonico, ca.nome) AS lado_a, COALESCE(sb.nome_canonico, cb.nome) AS lado_b
+        FROM incompatibilidade_regra r
+        LEFT JOIN substancia sa ON sa.id = r.id_substancia_a LEFT JOIN classe_quimica ca ON ca.id = r.id_classe_a
+        LEFT JOIN substancia sb ON sb.id = r.id_substancia_b LEFT JOIN classe_quimica cb ON cb.id = r.id_classe_b
+        WHERE r.ativo = TRUE AND (
+          ({lado('id_substancia_a', 'id_classe_a', 'a')} AND {lado('id_substancia_b', 'id_classe_b', 'b')})
+          OR ({lado('id_substancia_a', 'id_classe_a', 'b')} AND {lado('id_substancia_b', 'id_classe_b', 'a')}))
+        ORDER BY r.id LIMIT 20""", {"a": ids[0], "b": ids[1]})
+    if regras.get("status") != "ok":
+        return {"status": "error", "message": "Não foi possível consultar os dados agora."}
+    return {"status": "ok", "encontrado": bool(regras["dados"]), "itens": lados, "regras": regras["dados"],
+            "aviso_de_seguranca": SAFETY_NOTICE}
+
+
+# Orientação padrão e conservadora para qualquer produto de limpeza, até o produto ser identificado. Texto a ser
+# validado pela área de segurança do Quimia; o que a FDS do produto disser sobre primeiros socorros prevalece.
+EMERGENCIA_GERAL = (
+    "Em caso de emergência, ligue para o SAMU (192) ou para o Disque-Intoxicação (0800 722 6001) e tenha a "
+    "embalagem do produto em mãos."
+)
+EMERGENCIA_POR_VIA = {
+    "olhos": "Lave o olho com água corrente limpa por pelo menos 15 minutos, mantendo as pálpebras abertas, "
+             "sem esfregar. Retire as lentes de contato se for fácil. Procure atendimento médico.",
+    "pele": "Retire a roupa e os acessórios contaminados e lave a pele com bastante água corrente por pelo menos "
+            "15 minutos. Procure atendimento médico se houver dor, vermelhidão persistente ou bolhas.",
+    "inalacao": "Vá para um local arejado, ao ar livre. Se houver tosse, falta de ar ou mal-estar, procure "
+                "atendimento médico.",
+    "ingestao": "Não provoque vômito. Enxágue a boca com água, sem engolir, e procure atendimento médico "
+                "imediatamente.",
+}
+
+
+@tool
+def orientacao_geral_de_emergencia(rota_exposicao: str | None = None) -> dict:
+    """Primeiros socorros genéricos para contato com produto de limpeza, para quando o produto não foi identificado.
+    Não substitui a FDS do produto nem o atendimento médico."""
+    if rota_exposicao not in (None, *EMERGENCIA_POR_VIA):
+        return {"status": "error", "message": "Via de exposição inválida."}
+    vias = {rota_exposicao: EMERGENCIA_POR_VIA[rota_exposicao]} if rota_exposicao else EMERGENCIA_POR_VIA
+    return {"status": "ok", "encontrado": True, "orientacao_geral": vias, "emergencia": EMERGENCIA_GERAL,
+            "aviso": "Orientação geral, não específica do produto. As instruções da FDS e do rótulo prevalecem."}
+
+
 QUIMICO_TOOLS = [buscar_produto, consultar_composicao_produto,
                  verificar_compatibilidade_produtos, consultar_incompatibilidades_produto,
-                 consultar_primeiros_socorros]
+                 consultar_primeiros_socorros, orientacao_geral_de_emergencia,
+                 consultar_regra_entre_substancias]
