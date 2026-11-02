@@ -100,7 +100,9 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
     async def make_plan(state):
         plan = await (orchestrator or OrchestratorAgent()).ainvoke(state["pergunta"], state["contexto"])
         if plan.pergunta_original != state["pergunta"]:
-            raise ValueError("O orquestrador alterou a pergunta original.")
+            # O modelo pode corrigir ortografia ao ecoar a pergunta. A fonte de
+            # verdade é a entrada da requisição, usada também pelos especialistas.
+            plan = plan.model_copy(update={"pergunta_original": state["pergunta"]})
         mark(route=",".join(route.agente for route in plan.rotas) or plan.status)
         if not plan.rotas:
             mark(outcome=plan.status)

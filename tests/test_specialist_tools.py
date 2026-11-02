@@ -11,12 +11,14 @@ def test_bau_identity_is_bound_and_all_queries_filter_owner(monkeypatch):
     queries = []
     monkeypatch.setattr(bau_tools, "query", lambda sql, params: queries.append((sql, params)) or {"status": "ok", "dados": []})
     tools = bau_tools.create_bau_tools(owner)
-    arguments = [{}, {"id_estante": 12}, {"nome_comodo": "banheiro"}, {}, {}]
+    arguments = [{}, {}, {"nome_comodo": "banheiro"}, {}, {}]
     for item, args in zip(tools, arguments):
         assert "user_id" not in item.args
         item.invoke(args)
     assert len(queries) == 5
     assert all("id_usuario = %s" in sql and params[0] == owner for sql, params in queries)
+    assert "id_estante" not in tools[1].args
+    assert queries[1][1] == (owner, owner, 20)
 
 
 def test_bau_rejects_invalid_identity():
@@ -30,7 +32,7 @@ def test_bau_room_and_shelf_queries_include_favorites(monkeypatch):
     monkeypatch.setattr(bau_tools, "query", lambda sql, params: queries.append((sql, params)) or {"status": "ok", "dados": []})
     tools = {item.name: item for item in bau_tools.create_bau_tools(owner)}
 
-    tools["listar_produtos_estante"].invoke({"id_estante": 12})
+    tools["listar_produtos_estante"].invoke({})
     tools["listar_produtos_por_comodo"].invoke({"nome_comodo": "banheiro"})
 
     assert "ep.favorito" in queries[0][0]
@@ -39,6 +41,21 @@ def test_bau_room_and_shelf_queries_include_favorites(monkeypatch):
     assert "JOIN produto p ON p.id_comodo" not in room_sql
     assert "ep.favorito" in room_sql
     assert room_params[:3] == (owner, owner, owner)
+    assert room_params[3] == "%banheiro%"
+
+
+def test_buscar_produto_identifica_nome_e_marca_sem_confundir_os_campos(monkeypatch):
+    queries = []
+    monkeypatch.setattr(quimico_tools, "query", lambda sql, params: queries.append((sql, params)) or
+                        {"status": "ok", "dados": []})
+
+    quimico_tools.buscar_produto.invoke({"termo": "Ácido Sulfúrico Desentupidor Profissional (Flora)"})
+    quimico_tools.buscar_produto.invoke({"termo": "Desentupidor"})
+
+    assert "p.nome ILIKE %s AND m.nome ILIKE %s" in queries[0][0]
+    assert queries[0][1] == ("%Ácido Sulfúrico Desentupidor Profissional%", "Flora", 20)
+    assert "p.nome ILIKE %s OR m.nome ILIKE %s" in queries[1][0]
+    assert queries[1][1] == ("%Desentupidor%", "%Desentupidor%", "Desentupidor", 20)
 
 
 def test_bau_history_uses_each_database_column_type(monkeypatch):

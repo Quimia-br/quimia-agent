@@ -1,4 +1,6 @@
 """Tools de consulta ao catálogo e às FDS ativas."""
+import re
+
 from langchain_core.tools import tool
 from app.agent.specialists.sql_tools import query, positive_id, limit_rows
 
@@ -15,10 +17,18 @@ INSUFFICIENT_INFORMATION = (
 
 @tool
 def buscar_produto(termo: str, limite: int = 20) -> dict:
-    """Busca produtos por nome, marca ou código de barras. Não escolhe entre candidatos ambíguos."""
+    """Busca produtos por nome, marca ou código de barras; aceita também nome (marca)."""
     termo = termo.strip()
     if not termo:
         return {"status": "error", "message": "Informe nome, marca ou código de barras."}
+    nome_e_marca = re.fullmatch(r"(.+?)\s*\(([^()]+)\)", termo)
+    if nome_e_marca:
+        nome, marca = (parte.strip() for parte in nome_e_marca.groups())
+        return query("""SELECT p.id, p.nome, m.nome AS marca, p.descricao, p.tipo_produto,
+            p.cod_barras FROM produto p JOIN marca m ON m.id = p.id_marca
+            WHERE p.nome ILIKE %s AND m.nome ILIKE %s
+            ORDER BY p.nome, p.id LIMIT %s""",
+            (f"%{nome}%", marca, limit_rows(limite)))
     return query("""SELECT p.id, p.nome, m.nome AS marca, p.descricao, p.tipo_produto,
         p.cod_barras FROM produto p JOIN marca m ON m.id = p.id_marca
         WHERE p.nome ILIKE %s OR m.nome ILIKE %s OR p.cod_barras = %s

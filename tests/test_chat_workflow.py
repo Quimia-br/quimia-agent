@@ -24,6 +24,36 @@ class PassthroughOutput:
         return answer
 
 
+def test_orchestrator_typo_correction_does_not_fail_or_replace_question():
+    original = "quias sao os produtos da minha estante?"
+
+    class Orchestrator:
+        async def ainvoke(self, question, context):
+            return OrchestratorResult(
+                status="roteado", pergunta_original="quais são os produtos da minha estante?",
+                rotas=[RoutePlan(id="r1", agente="bau", objetivo="Listar produtos da estante")],
+            )
+
+    class Bau:
+        async def ainvoke_with_evidence(self, question, goal, dependencies, history):
+            assert question == original
+            return SpecialistResult(dominio="bau", intencao="consultar",
+                                    resposta="Encontrei os produtos da sua estante."), []
+
+    class Judge:
+        async def ainvoke(self, question, answer, results, evidence):
+            assert question == original
+            return JudgeResult(veredito="aprovado", confianca=1, justificativa="OK")
+
+    result = asyncio.run(build_graph(
+        input_guardrail=AllowedInput(), orchestrator=Orchestrator(),
+        output_guardrail=PassthroughOutput(), judge=Judge(),
+        factory=lambda name, user_id: Bau(),
+    ).ainvoke({"pergunta": original, "user_id": str(uuid4()), "contexto": ""}))
+    assert result["plano"].pergunta_original == original
+    assert result["resposta"] == "Encontrei os produtos da sua estante."
+
+
 def test_specialist_error_is_not_replaced_by_successful_generic_answer():
     class Orchestrator:
         async def ainvoke(self, question, context):
