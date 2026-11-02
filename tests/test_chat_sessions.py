@@ -2,10 +2,10 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-import app.database.chat_summaries as summaries
+import app.memory.chat_summaries as summaries
 import app.main as main
 import app.routes.chat_routes as routes
-from app.agent.summarizer import SessionSummary
+from app.memory.summarizer import SessionSummary
 
 TURNS = [{"pergunta": "Posso misturar?", "resposta": "Não misture água sanitária com ácidos."}]
 

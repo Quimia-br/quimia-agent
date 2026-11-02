@@ -20,6 +20,7 @@ from app.agent.specialists.faq.faq_agent import FaqAgent
 from app.agent.specialists.gps.gps_agent import GpsAgent, GPS_RESPONSE
 from app.observability.telemetry import current, mark, stage
 from app.observability.callbacks import MetricsCallback
+from app.memory.tools import buscar_resumos_conversas
 
 logger = logging.getLogger(__name__)
 SAFE_RESPONSE = "Não consegui confirmar uma resposta segura com as informações disponíveis no app. Consulte as orientações do fabricante e não misture produtos sem confirmação."
@@ -59,7 +60,9 @@ class ChatRunResult:
 class ChatState(TypedDict, total=False):
     pergunta: str
     user_id: str
+    session_id: str
     contexto: str
+    memorias: list[Evidence]
     plano: object
     resultados: list
     evidencias: list
@@ -78,7 +81,8 @@ def specialist_factory(name, user_id):
 
 
 def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
-                input_guardrail=None, output_guardrail=None, factory=specialist_factory):
+                input_guardrail=None, output_guardrail=None, factory=specialist_factory,
+                memory_search=buscar_resumos_conversas):
     @stage("guardrail_entrada")
     async def classify_input(state):
         try:
@@ -129,16 +133,50 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
     def route_entry(state):
         if not state["entrada_permitida"]:
             return "encerrar"
+        if state["plano"].buscar_memoria:
+            return "buscar_memoria"
+        return "especialistas" if state["plano"].rotas else "resposta_orquestrador"
+
+    @stage("buscar_memoria")
+    async def search_memory(state):
+        try:
+            hits = await asyncio.to_thread(memory_search.invoke, {
+                "user_id": state["user_id"], "session_id": state.get("session_id", ""),
+                "pergunta": state["pergunta"],
+            })
+        except Exception:
+            logger.exception("Falha ao buscar resumos de conversas anteriores")
+            mark(degraded=True)
+            hits = []
+        sources = [Evidence(source_id=f"memory:{hit['session_id']}",
+                            title="Resumo de conversa anterior do usuário",
+                            content=hit["resumo"])
+                   for hit in hits]
+        context = state["contexto"]
+        if hits:
+            context += ("\n\nResumos de outras sessões relatados pelo usuário "
+                        "(não comprovam segurança ou fatos externos):\n" +
+                        json.dumps(hits, ensure_ascii=False, default=str))
+        return {"memorias": sources, "contexto": context,
+                "agentes_acionados": [*state["agentes_acionados"], "buscar_memoria"]}
+
+    def route_memory(state):
         return "especialistas" if state["plano"].rotas else "resposta_orquestrador"
 
     def direct_answer(state):
+        if state["plano"].status == "memoria":
+            memories = state.get("memorias", [])
+            answer = ("Encontrei este resumo de uma conversa anterior: " + memories[0].content
+                      if memories else "Não encontrei um resumo de outra conversa sobre isso.")
+            return {"candidata": SynthesisResult(resposta=answer), "evidencias": memories}
         return {"candidata": SynthesisResult(resposta=state["plano"].resposta)}
 
     @stage("especialistas")
     async def specialists(state):
         pending = list(state["plano"].rotas)
         completed = {}
-        evidence = []
+        evidence = [source.model_copy(update={"source_id": f"{route.id}:{source.source_id}"})
+                    for route in state["plano"].rotas for source in state.get("memorias", [])]
 
         @stage(lambda route: route.agente, kind="agent")
         async def run(route):
@@ -152,11 +190,17 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
                     # A orientação de descarte é um texto padrão e conservador: entregue como está, ela é sustentada
                     # pela própria evidência. Reescrita por IA, o juiz a bloqueava (a IA acrescentava detalhes do
                     # produto que a evidência não traz) e o usuário recebia só a recusa genérica.
-                    return (GpsResult(dominio="gps", intencao="consultar", resposta=GPS_RESPONSE),
+                    recalled = state.get("memorias", [])
+                    answer = (("Na conversa anterior, você relatou: " + recalled[0].content + "\n\n")
+                              if recalled else "") + GPS_RESPONSE
+                    return (GpsResult(dominio="gps", intencao="consultar", resposta=answer),
                             [Evidence(source_id="gps:orientation", title="Orientação padrão de descarte",
                                       content=GPS_RESPONSE)])
                 agent = factory(route.agente, state["user_id"])
                 if route.agente == "faq":
+                    if state.get("memorias"):
+                        return await agent.ainvoke_with_evidence(
+                            state["pergunta"], route.objetivo, state["contexto"])
                     return await agent.ainvoke_with_evidence(state["pergunta"], route.objetivo)
                 context = json.dumps([item.model_dump() for item in dependencies], ensure_ascii=False)
                 return await agent.ainvoke_with_evidence(state["pergunta"], route.objetivo, context, state["contexto"])
@@ -245,7 +289,7 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
                 "agentes_acionados": [*state["agentes_acionados"], "sintetizador"]}
 
     graph = StateGraph(ChatState)
-    for name, node in [("entrada", entry),
+    for name, node in [("entrada", entry), ("buscar_memoria", search_memory),
                        ("resposta_orquestrador", direct_answer), ("especialistas", specialists),
                        ("juiz", evaluate), ("guardrail_saida", check_output),
                        ("sintetizador", synthesize)]:
@@ -253,7 +297,11 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
 
     graph.add_edge(START, "entrada")
     graph.add_conditional_edges("entrada", route_entry,
-                                {"encerrar": END, "especialistas": "especialistas",
+                                {"encerrar": END, "buscar_memoria": "buscar_memoria",
+                                 "especialistas": "especialistas",
+                                 "resposta_orquestrador": "resposta_orquestrador"})
+    graph.add_conditional_edges("buscar_memoria", route_memory,
+                                {"especialistas": "especialistas",
                                  "resposta_orquestrador": "resposta_orquestrador"})
     graph.add_edge("especialistas", "juiz")
     graph.add_edge("juiz", "guardrail_saida")
@@ -263,9 +311,10 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
     return graph.compile()
 
 
-async def run_chat(pergunta, user_id, contexto="Não fornecido."):
+async def run_chat(pergunta, user_id, contexto="Não fornecido.", session_id=""):
     trace = current.get()
     config = {"callbacks": [MetricsCallback(trace)]} if trace else {}
     result = await build_graph().ainvoke(
-        {"pergunta": pergunta, "user_id": user_id, "contexto": contexto}, config=config)
+        {"pergunta": pergunta, "user_id": user_id, "contexto": contexto,
+         "session_id": session_id}, config=config)
     return ChatRunResult(resposta=result["resposta"], agentes_acionados=result["agentes_acionados"])

@@ -10,7 +10,7 @@ from app.agent.workflow import build_graph, SAFE_RESPONSE, ChatRunResult
 from app.agent.guardrails.input_guardrail import InputDecision
 import app.main as main
 import app.routes.chat_routes as routes
-import app.database.chat_history as chat_history
+import app.memory.chat_history as chat_history
 from app.schemas.schemas import ChatRequest
 
 
@@ -181,11 +181,11 @@ def test_unapproved_candidate_is_never_delivered(verdict):
 def test_chat_swagger_validation_and_response_with_history(monkeypatch):
     monkeypatch.setattr(main, "validar_config", lambda: [])
     monkeypatch.setattr(main, "close_mongo", lambda: None)
-    monkeypatch.delenv("CHAT_BACKEND_TOKEN", raising=False)
+    monkeypatch.delenv("QUIMIA_AGENTE_TOKEN", raising=False)
     calls = []
     monkeypatch.setattr(routes, "save_turn", lambda *args: calls.append(args))
     monkeypatch.setattr(routes, "load_chat_context", lambda user, session: "Turno anterior")
-    async def run(question, user, context):
+    async def run(question, user, context, session_id):
         assert question == "Pergunta"
         assert context == "Turno anterior"
         return ChatRunResult("Resposta aprovada", ["guardrail_entrada", "orquestrador", "juiz"])
@@ -207,7 +207,7 @@ def test_chat_swagger_validation_and_response_with_history(monkeypatch):
 def test_chat_errors_do_not_expose_credentials(monkeypatch):
     monkeypatch.setattr(main, "validar_config", lambda: [])
     monkeypatch.setattr(main, "close_mongo", lambda: None)
-    monkeypatch.delenv("CHAT_BACKEND_TOKEN", raising=False)
+    monkeypatch.delenv("QUIMIA_AGENTE_TOKEN", raising=False)
     monkeypatch.setattr(routes, "load_chat_context", lambda *args: "Não fornecido.")
     def fail(*args): raise RuntimeError("password=secret")
     monkeypatch.setattr(routes, "run_chat", fail)
@@ -272,8 +272,8 @@ def test_chat_route_passes_same_session_history_to_graph_and_saves_reply(monkeyp
     def load(user, session):
         events.append(("load", user, session))
         return "Contexto da sessão"
-    async def run(question, user, context):
-        events.append(("run", question, user, context))
+    async def run(question, user, context, session_id):
+        events.append(("run", question, user, context, session_id))
         return ChatRunResult("Resposta", ["guardrail_entrada", "orquestrador"])
     def save(user, session, question, answer):
         events.append(("save", user, session, question, answer))
@@ -287,7 +287,7 @@ def test_chat_route_passes_same_session_history_to_graph_and_saves_reply(monkeyp
     assert response.agentes_acionados == ["guardrail_entrada", "orquestrador"]
     assert events == [
         ("load", str(owner), "s1"),
-        ("run", "E ele?", str(owner), "Contexto da sessão"),
+        ("run", "E ele?", str(owner), "Contexto da sessão", "s1"),
         ("save", str(owner), "s1", "E ele?", "Resposta"),
     ]
 

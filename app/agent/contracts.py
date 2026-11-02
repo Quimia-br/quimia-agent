@@ -13,9 +13,10 @@ class RoutePlan(BaseModel):
 
 
 class OrchestratorResult(BaseModel):
-    status: Literal["roteado", "esclarecer", "fora_escopo", "saudacao"]
+    status: Literal["roteado", "memoria", "esclarecer", "fora_escopo", "saudacao"]
     pergunta_original: str
     rotas: list[RoutePlan] = Field(default_factory=list, max_length=3)
+    buscar_memoria: bool = False
     esclarecer: str | None = None
     resposta: str | None = None
 
@@ -25,13 +26,15 @@ class OrchestratorResult(BaseModel):
             raise ValueError("O status 'roteado' exige pelo menos uma rota.")
         if self.status != "roteado" and self.rotas:
             raise ValueError("Somente o status 'roteado' pode conter rotas.")
+        if self.status == "memoria" and not self.buscar_memoria:
+            raise ValueError("Uma consulta de memória exige buscar_memoria.")
         if self.status == "esclarecer" and not self.esclarecer:
             raise ValueError("O status 'esclarecer' exige uma pergunta.")
         if self.status != "esclarecer" and self.esclarecer is not None:
             raise ValueError("Somente o status 'esclarecer' pode pedir esclarecimento.")
-        if self.status == "roteado" and self.resposta is not None:
+        if self.status in ("roteado", "memoria") and self.resposta is not None:
             raise ValueError("O roteamento não pode antecipar a resposta dos especialistas.")
-        if self.status != "roteado" and not self.resposta:
+        if self.status not in ("roteado", "memoria") and not self.resposta:
             raise ValueError("Um plano sem especialistas exige resposta do orquestrador.")
 
         route_ids = [route.id for route in self.rotas]

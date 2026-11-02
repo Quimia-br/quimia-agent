@@ -64,6 +64,7 @@ class FakeLangSmith:
 def isolated_sre_storage(monkeypatch):
     fake = FakeLangSmith()
     monkeypatch.setenv('AGENT_WARMUP', '0')  # os testes não abrem conexões reais ao subir a aplicação
+    monkeypatch.delenv('QUIMIA_AGENTE_TOKEN', raising=False)
     llms._modelo.cache_clear()
     monkeypatch.setenv('LANGSMITH_TRACING', 'false')
     monkeypatch.setenv('LANGSMITH_API_KEY', 'test-only')

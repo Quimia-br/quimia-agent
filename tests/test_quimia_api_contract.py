@@ -18,9 +18,10 @@ def test_api_token_protects_chat_and_session_close(monkeypatch):
     monkeypatch.setattr(chat_routes, "save_turn", lambda *_: None)
     monkeypatch.setattr(chat_routes, "has_summary", lambda *_: True)
 
-    async def responder(pergunta, usuario, contexto):
+    async def responder(pergunta, usuario, contexto, sessao):
         assert pergunta == "Posso misturar?"
         assert usuario == user_id
+        assert sessao == "sessao-1"
         return ChatRunResult("Consulte o rótulo.", ["quimico"])
 
     monkeypatch.setattr(chat_routes, "run_chat", responder)

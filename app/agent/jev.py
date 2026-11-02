@@ -47,7 +47,9 @@ QUESTIONS = {
         "type": "choice",
         "instructions": (
             "Classifique o apoio factual de `resposta` usando somente `evidencias` e os fatos "
-            "relatados pelo usuário em `pergunta`. `respostas_especialistas` não são fonte "
+            "relatados pelo usuário em `pergunta`. Resumos de conversas anteriores "
+            "sustentam apenas o que o usuário relatou, nunca segurança, composição, "
+            "aceitação de resíduos ou outro fato externo. `respostas_especialistas` não são fonte "
             "independente. Uma resposta que apenas pede esclarecimento, relata indisponibilidade "
             "ou evita orientação insegura pode ser apoiada sem evidência técnica. "
             "Uma saudação sem alegações verificáveis também pode ser apoiada."
@@ -63,8 +65,11 @@ QUESTIONS = {
         "instructions": (
             "Todas as alegações verificáveis em `resposta` são diretamente sustentadas por "
             "`evidencias` ou apenas repetem fatos relatados em `pergunta`, sem transformar "
-            "a fala do usuário em fato externo? Pedir esclarecimento, relatar indisponibilidade "
-            "ou evitar orientação insegura conta como sim. Uma saudação sem alegações "
+            "a fala do usuário em fato externo? Resumos de conversas anteriores só "
+            "comprovam que o usuário fez um relato; não comprovam a segurança ou "
+            "correção do que foi relatado. Pedir esclarecimento, relatar "
+            "indisponibilidade ou evitar orientação insegura conta como sim. "
+            "Uma saudação sem alegações "
             "verificáveis também conta como sim. Não use `respostas_especialistas` "
             "como prova independente."
         ),
