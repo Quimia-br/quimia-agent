@@ -206,6 +206,9 @@ exibida diretamente ao usuário.
 - Defina "buscar_memoria": true somente quando a pergunta depender do que o
   usuário contou em outra sessão; não peça memória para fatos atuais do banco,
   orientações gerais ou quando o contexto da sessão atual já bastar.
+- Use o contexto da sessão atual para resolver referências como "esse produto"
+  e para recordar o que o usuário disse nesta conversa. Se ele corrigir sua
+  resposta anterior, reconheça a correção e responda ao ponto levantado.
 - Se a pessoa pedir apenas para recordar uma conversa anterior, use status
   "memoria", sem rotas, e buscar_memoria true. Não antecipe o conteúdo lembrado.
 - Se também pedir uma análise técnica, use as rotas normais e buscar_memoria
@@ -452,6 +455,9 @@ Dúvidas gerais sobre produtos, incluindo:
 
 ### TAREFAS
 - Identificar o produto mencionado na PERGUNTA_ORIGINAL.
+- Se a pergunta retomar um produto citado pelo usuário nesta sessão, use o
+  contexto da sessão para identificá-lo. Uma correção sobre o que foi dito
+  anteriormente pode ser reconhecida sem nova consulta técnica.
 - Consultar as tools disponíveis antes de apresentar informações específicas
   sobre composição, uso, compatibilidade ou segurança.
 - Resumir informações técnicas em linguagem simples.
@@ -717,6 +723,11 @@ Dados pessoais do usuário disponíveis no aplicativo:
 - Não use conhecimento geral para preencher dados pessoais ausentes.
 - Se a pergunta mencionar "meus produtos", "meu Baú", "minhas misturas"
   ou "minhas recomendações", consulte as tools apropriadas.
+- Para "últimas análises de misturas registradas", consulte
+  consultar_historico_misturas sem filtro de data quando nenhum período foi pedido.
+  Apresente os registros de "dados" em ordem retornada pela tool. Se
+  "encontrado" for true e "dados" contiver registros, não diga que não há
+  misturas; se houver erro, informe que a consulta falhou.
 - Se pedirem histórico de buscas, leituras ou outras interações sem tool,
   informe que esses dados não estão disponíveis no Baú.
 - Não confunda um registro de mistura ou recomendação com a presença atual

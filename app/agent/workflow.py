@@ -51,6 +51,24 @@ def juntar_partes(partes):
     return "\n\n".join(resultado)
 
 
+def falas_do_usuario_na_sessao(contexto: str) -> list[Evidence]:
+    """Recupera somente relatos do usuário; respostas anteriores da IA não são prova."""
+    if not contexto.startswith("Turnos anteriores desta sessão"):
+        return []
+    try:
+        turns, _ = json.JSONDecoder().raw_decode(contexto.split("\n", 1)[1])
+    except (IndexError, ValueError, TypeError):
+        return []
+    if not isinstance(turns, list):
+        return []
+    return [Evidence(source_id=f"session:user:{index}",
+                     title="Fala do usuário nesta sessão (não comprova fatos técnicos)",
+                     content=turn["pergunta"])
+            for index, turn in enumerate(turns[-8:])
+            if isinstance(turn, dict) and isinstance(turn.get("pergunta"), str)
+            and turn["pergunta"].strip()]
+
+
 @dataclass(frozen=True)
 class ChatRunResult:
     resposta: str
@@ -179,6 +197,9 @@ def build_graph(*, orchestrator=None, synthesizer=None, judge=None,
         completed = {}
         evidence = [source.model_copy(update={"source_id": f"{route.id}:{source.source_id}"})
                     for route in state["plano"].rotas for source in state.get("memorias", [])]
+        evidence.extend(source.model_copy(update={"source_id": f"{route.id}:{source.source_id}"})
+                        for route in state["plano"].rotas
+                        for source in falas_do_usuario_na_sessao(state.get("contexto", "")))
 
         @stage(lambda route: route.agente, kind="agent")
         async def run(route):

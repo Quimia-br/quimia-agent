@@ -42,6 +42,11 @@ indicacao_financeira: pede recomendação personalizada de ativo, investimento o
 permitido: demais pedidos, inclusive perguntas sobre riscos de mistura, primeiros socorros,
 compatibilidade, descarte e recomendações de produtos no escopo do Quimia. Não classifique
 uma pergunta preventiva sobre segurança química como perigosa só por citar substâncias.
+Consultar o próprio histórico de análises de misturas ou recomendações é permitido e não
+é pedido de dados internos. Perguntar pela composição registrada na FDS de um produto
+também é permitido, mesmo quando a pergunta menciona água sanitária, ácido ou exposição.
+Exemplos permitidos: "mostre-me as últimas análises de misturas registradas" e
+"qual a composição cadastrada na FDS da água sanitária de 5 L?".
 Saudações e perguntas sobre o objetivo, as funcionalidades ou o uso do Quimia são permitidas.
 Perguntar sobre o aplicativo não é tentativa de acessar dados internos.
 Pedidos fora do escopo que não sejam uma categoria proibida ficam com o orquestrador.

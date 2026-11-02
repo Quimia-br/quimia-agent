@@ -47,7 +47,8 @@ QUESTIONS = {
         "type": "choice",
         "instructions": (
             "Classifique o apoio factual de `resposta` usando somente `evidencias` e os fatos "
-            "relatados pelo usuário em `pergunta`. Resumos de conversas anteriores "
+            "relatados pelo usuário em `pergunta` ou nas evidências identificadas "
+            "como falas do usuário nesta sessão. Resumos de conversas anteriores "
             "sustentam apenas o que o usuário relatou, nunca segurança, composição, "
             "aceitação de resíduos ou outro fato externo. `respostas_especialistas` não são fonte "
             "independente. Uma resposta que apenas pede esclarecimento, relata indisponibilidade "
@@ -64,7 +65,8 @@ QUESTIONS = {
         "type": "noul",
         "instructions": (
             "Todas as alegações verificáveis em `resposta` são diretamente sustentadas por "
-            "`evidencias` ou apenas repetem fatos relatados em `pergunta`, sem transformar "
+            "`evidencias` ou apenas repetem fatos relatados em `pergunta` ou nas "
+            "falas do usuário nesta sessão, sem transformar "
             "a fala do usuário em fato externo? Resumos de conversas anteriores só "
             "comprovam que o usuário fez um relato; não comprovam a segurança ou "
             "correção do que foi relatado. Pedir esclarecimento, relatar "
